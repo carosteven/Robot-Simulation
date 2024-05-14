@@ -49,7 +49,7 @@ def add_box(space, size, mass):
 
     shape = pymunk.Poly.create_box(body, (size, size), 0.0)
     shape.mass = mass
-    shape.friction = 0.01
+    shape.friction = 0.7
     space.add(shape)
 
     return body
