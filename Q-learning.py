@@ -22,7 +22,7 @@ def policy(Q, s):
     rewards = [Q[(s, i)] for i in available_act]
     best_actions = [available_act[i[0]] for i in np.argwhere(rewards == np.amax(rewards))]
     best_action = np.random.choice(best_actions)
-    return best_action
+    return best_action #asfd
 
 def sample_next_action(Q, s):
     method = np.random.choice(['exploration', 'exploitation'], p=[epsilon, 1-epsilon])
