@@ -1,13 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
-from maze_env import Maze_Sim
+from wheeled_robot_env import Wheeled_Robot_Sim
 
-sim = Maze_Sim()
-available_act = ['up', 'down', 'left', 'right']
+sim = Wheeled_Robot_Sim()
+available_act = sim.available_act
 gamma = 0.8
 epsilon = 0.1
-DEFAULT_ACT = 'up'
+DEFAULT_ACT = available_act[0]
 train = True
 continue_training = False
 
@@ -22,7 +22,7 @@ def policy(Q, s):
     rewards = [Q[(s, i)] for i in available_act]
     best_actions = [available_act[i[0]] for i in np.argwhere(rewards == np.amax(rewards))]
     best_action = np.random.choice(best_actions)
-    return best_action #asfd
+    return best_action
 
 def sample_next_action(Q, s):
     method = np.random.choice(['exploration', 'exploitation'], p=[epsilon, 1-epsilon])
@@ -36,11 +36,18 @@ def sample_next_action(Q, s):
     return next_action
 
 def get_state():
-    position = (round(sim._agent.body.center().x, 0), round(sim._agent.body.center().y, 0))
-    velocity = (round(sim._agent.body.velocity.x/50.0)*50, round(sim._agent.body.velocity.y/50.0)*50)
+    # position = (round(sim._agent['robot'].center().x/2.0)*2, round(sim._agent['robot'].center().y/2.0)*2)
+    if sim.sensor_data is None:
+        sensor = 'safe'
+    else:
+        sensor = round(sim.sensor_data[2])
+
+    velocity = (round(sim._agent['robot'].velocity.x/5.0)*5, round(sim._agent['robot'].velocity.y/5.0)*5)
+    direction = (round(sim._agent['robot'].rotation_vector.perpendicular().x), round(sim._agent['robot'].rotation_vector.perpendicular().y))
 
     state = []
-    for stat in [position, velocity]:
+    state.append(sensor)
+    for stat in [velocity, direction]:
         for coord in stat:
             state.append(coord)
     return tuple(state)
@@ -59,7 +66,7 @@ def train_model(epochs=1, Q={}, n={}):
             print(f"Epoch: {epoch}, Score: {score}", end='\r')
 
             current_state = get_state()
-            score = sim._agent.reward
+            score = sim._agent['robot'].score
 
             # Initialize Q and n (if necessary)
             if Q.get((current_state, DEFAULT_ACT)) == None:
@@ -71,7 +78,7 @@ def train_model(epochs=1, Q={}, n={}):
 
             # Observe s' and r
             new_state = get_state()
-            r = sim._agent.reward - score
+            r = sim._agent['robot'].score - score
 
             # Initialize Q and n (if necessary)
             if Q.get((new_state, DEFAULT_ACT)) == None:
@@ -107,7 +114,7 @@ def test_model(Q_actual, n_actual):
 
     while sim._running:
         sim.run_controlled()
-        print(f"Score: {sim._agent.reward}", end='\r')
+        print(f"Score: {sim._agent['robot'].score}", end='\r')
 
         current_state = get_state()
         if Q.get((current_state, DEFAULT_ACT)) == None:
@@ -117,7 +124,7 @@ def test_model(Q_actual, n_actual):
         sim._actions(action)
 
 
-train = False
+# train = False
 
 if train == True:
     if continue_training == True:
