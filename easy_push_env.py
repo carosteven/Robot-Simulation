@@ -10,11 +10,8 @@ def limit_velocity(body, gravity, damping, dt):
         pymunk.Body.update_velocity(body, gravity, body.damping, dt)
         l = body.velocity.length
         if l > max_velocity:
-            body.score -= 0.25
             scale = max_velocity / l
             body.velocity = body.velocity * scale
-        elif l < 2:
-            body.score -= 0.25
 
 def custom_damping(body, gravity, damping, dt):
     pymunk.Body.update_velocity(body, gravity, body.damping, dt)
@@ -40,14 +37,14 @@ class Easy_Push_Sim(object):
 
         # Static barrier walls (lines) that the balls bounce off of
         self._add_static_scenery()
+        
+        # The object to be pushed
+        self._object = self._create_object(radius=10, mass=10, position=(300,300), damping=.99)
 
         # The agent to be controlled
         self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(450, 500), damping=0.99)
         for key in self._agent:
             self._agent[key].score = 0
-        
-        # The object to be pushed
-        self._object = self._create_object(radius=10, mass=10, position=(300,300), damping=.99)
 
         # Available actions
         self.available_act = ['w2_forward', 'w2_backward', 'w1_backward', 'w1_forward', 'nothing']
@@ -67,94 +64,6 @@ class Easy_Push_Sim(object):
         # Execution control
         self._running = True
 
-    def _update(self):
-        self._agent['robot'].score += (self._agent['wheel_1'].score + self._agent['wheel_2'].score)
-        self._agent['wheel_1'].score = 0
-        self._agent['wheel_2'].score = 0
-        
-        self.left_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((-25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
-        self.right_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
-        self.distance_to_goal[0] = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((0, 0)), max_distance=1200, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b11))[2]
-
-        if self.collision_occuring:
-            self._agent['robot'].score -= 0.25
-
-        if self.distance_to_goal[0] - self.distance_to_goal[1] < 0:
-            self._agent['robot'].score += 0.25
-        else:
-            self._agent['robot'].score -= 0.25
-        self.distance_to_goal[1] = self.distance_to_goal[0]
-                        
-        if self._agent['wheel_1'].latch:
-            if self._agent['wheel_1'].forward:
-                self._agent['wheel_1'].velocity = -abs(self._agent['wheel_1'].velocity) * self._agent['wheel_1'].rotation_vector.perpendicular()
-            else:
-                self._agent['wheel_1'].velocity = abs(self._agent['wheel_1'].velocity) * self._agent['wheel_1'].rotation_vector.perpendicular()
-
-        if self._agent['wheel_2'].latch:
-            if self._agent['wheel_2'].forward:
-                self._agent['wheel_2'].velocity = -abs(self._agent['wheel_2'].velocity) * self._agent['wheel_2'].rotation_vector.perpendicular()
-            else:
-                self._agent['wheel_2'].velocity = abs(self._agent['wheel_2'].velocity) * self._agent['wheel_2'].rotation_vector.perpendicular()
-
-        for key in self._agent:
-            if key != 'robot':
-                if self._agent[key].position.x > 600:
-                    self._agent[key].position = (590, self._agent[key].position.y)
-                
-                elif self._agent[key].position.x < 0:
-                    self._agent[key].position = (10, self._agent[key].position.y)
-
-                if self._agent[key].position.y > 600:
-                    self._agent[key].position = (self._agent[key].position.x, 590)
-                
-                elif self._agent[key].position.y < 0:
-                    self._agent[key].position = (self._agent[key].position.x, 10)
-
-                if (self._agent[key].position - self._agent['robot'].position).length > 34:
-                    if key == 'wheel_1':
-                        self._agent[key].position = self._agent['robot'].local_to_world((-30, 15))
-                    else:
-                        self._agent[key].position = self._agent['robot'].local_to_world((30, 15))
-
-
-    def run(self) -> None:
-        """
-        The mail loop of the game
-        :return: None
-        """
-        # Main Loop
-        while self._running:
-            # Progress time forward
-            for x in range(self._physics_steps_per_frame):
-                self._space.step(self._dt)
-            self._process_events()
-            self._update()
-            self._clear_screen()
-            self._draw_objects()
-            
-            pygame.display.flip()
-            # Delay fixed time between frames
-            self._clock.tick(110)
-            pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
-    
-    def run_controlled(self):
-        # Progress time forward
-        for x in range(self._physics_steps_per_frame):
-            self._space.step(self._dt)
-
-        '''for constraint in self._space._constraints:
-            constraint._set_distance = 0'''
-        self._process_events()
-        self._update()
-        self._clear_screen()
-        self._draw_objects()
-        
-        pygame.display.flip()
-        # Delay fixed time between frames
-        self._clock.tick(230)
-        pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
-    
     def _add_static_scenery(self) -> None:
         """
         Create the static bodies
@@ -261,6 +170,44 @@ class Easy_Push_Sim(object):
         self._space.add(joint_1, joint_2, joint_3, joint_4, joint_5, joint_6)
         return {'robot': robot_body, 'wheel_1': wheel_1_body, 'wheel_2': wheel_2_body}
 
+    def run(self) -> None:
+        """
+        The main loop of the game
+        :return: None
+        """
+        # Main Loop
+        while self._running:
+            # Progress time forward
+            for x in range(self._physics_steps_per_frame):
+                self._space.step(self._dt)
+
+            self._process_events()
+            self._update()
+            self._clear_screen()
+            self._draw_objects()
+            
+            pygame.display.flip()
+            # Delay fixed time between frames
+            self._clock.tick(110)
+            pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
+    
+    def run_controlled(self) -> None:
+        # Progress time forward
+        for x in range(self._physics_steps_per_frame):
+            self._space.step(self._dt)
+
+        '''for constraint in self._space._constraints:
+            constraint._set_distance = 0'''
+        self._process_events()
+        self._update()
+        self._clear_screen()
+        self._draw_objects()
+        
+        pygame.display.flip()
+        # Delay fixed time between frames
+        self._clock.tick(230)
+        pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
+    
     def _process_events(self) -> None:
         """
         Handle game and events like keyboard input. Call once per frame only.
@@ -289,23 +236,38 @@ class Easy_Push_Sim(object):
                     elif keys[pygame.K_RIGHT]:
                         self._actions('w1_forward')
     
-    def collision_rewards(self, arbiter, space, dummy):
-        shapes = arbiter.shapes
-        # self._agent['robot'].score += shapes[1].reward
-        self.collision_occuring = True
-        self._agent['wheel_1'].latch = False
-        self._agent['wheel_2'].latch = False
-        return True
-    
-    def collision_stop_rewards(self, arbiter, space, dummy):
-        self.collision_occuring = False
-        return True
-    
-    def collision_goal(self, arbiter, space, dummy):
-        shapes = arbiter.shapes
-        self._agent['robot'].score += shapes[1].reward
-        self._running = False
-        return True
+    def _update(self) -> None:
+        if self._agent['wheel_1'].latch:
+            if self._agent['wheel_1'].forward:
+                self._agent['wheel_1'].velocity = -abs(self._agent['wheel_1'].velocity) * self._agent['wheel_1'].rotation_vector.perpendicular()
+            else:
+                self._agent['wheel_1'].velocity = abs(self._agent['wheel_1'].velocity) * self._agent['wheel_1'].rotation_vector.perpendicular()
+
+        if self._agent['wheel_2'].latch:
+            if self._agent['wheel_2'].forward:
+                self._agent['wheel_2'].velocity = -abs(self._agent['wheel_2'].velocity) * self._agent['wheel_2'].rotation_vector.perpendicular()
+            else:
+                self._agent['wheel_2'].velocity = abs(self._agent['wheel_2'].velocity) * self._agent['wheel_2'].rotation_vector.perpendicular()
+
+        for key in self._agent:
+            if key != 'robot':
+                if self._agent[key].position.x > 600:
+                    self._agent[key].position = (590, self._agent[key].position.y)
+                
+                elif self._agent[key].position.x < 0:
+                    self._agent[key].position = (10, self._agent[key].position.y)
+
+                if self._agent[key].position.y > 600:
+                    self._agent[key].position = (self._agent[key].position.x, 590)
+                
+                elif self._agent[key].position.y < 0:
+                    self._agent[key].position = (self._agent[key].position.x, 10)
+
+                if (self._agent[key].position - self._agent['robot'].position).length > 34:
+                    if key == 'wheel_1':
+                        self._agent[key].position = self._agent['robot'].local_to_world((-30, 15))
+                    else:
+                        self._agent[key].position = self._agent['robot'].local_to_world((30, 15))
 
     def _clear_screen(self) -> None:
         """
@@ -320,32 +282,48 @@ class Easy_Push_Sim(object):
         :return: None
         """
         self._space.debug_draw(self._draw_options)
-    
+
     def _actions(self, action) -> None:
         """
         action: 'w2_forward', 'w2_backward', 'w1_backward', 'w1_forward', 'nothing'
         :return: None
         """
-        # Negative Reward for taking action
-        self._agent['robot'].score -= 0.25
-        
         if action == 'w2_forward':
             self._agent['wheel_2'].velocity += self._agent['wheel_2'].rotation_vector.perpendicular() * -50
             self._agent['wheel_2'].latch = True
             self._agent['wheel_2'].forward = True
+
         elif action == 'w2_backward':
             self._agent['wheel_2'].velocity += self._agent['wheel_2'].rotation_vector.perpendicular() * 50
             self._agent['wheel_2'].latch = True
             self._agent['wheel_2'].forward = False
+
         elif action == 'w1_backward':
             self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * 50
             self._agent['wheel_1'].latch = True
             self._agent['wheel_1'].forward = False
+
         elif action == 'w1_forward':
             self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * -50
             self._agent['wheel_1'].latch = True
             self._agent['wheel_1'].forward = True
-        
+
+    def collision_rewards(self, arbiter, space, dummy):
+        shapes = arbiter.shapes
+        self.collision_occuring = True
+        self._agent['wheel_1'].latch = False
+        self._agent['wheel_2'].latch = False
+        return True
+    
+    def collision_stop_rewards(self, arbiter, space, dummy):
+        self.collision_occuring = False
+        return True
+    
+    def collision_goal(self, arbiter, space, dummy):
+        shapes = arbiter.shapes
+        self._running = False
+        return True
+ 
         
 def main():
     game = Easy_Push_Sim()
