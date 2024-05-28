@@ -10,11 +10,15 @@ epsilon = 0.1
 DEFAULT_ACT = available_act[0]
 train = True
 continue_training = False
+# global new_state
+# is_new_state = True
 
 def init_Q_n(Q, n, s):
     for a in available_act:
         Q[(s, a)] = -1
         n[(s, a)] = 0
+    # global is_new_state
+    # is_new_state = True
     return Q, n
 
 def policy(Q, s):
@@ -37,17 +41,20 @@ def sample_next_action(Q, s):
 
 def get_state():
     # position = (round(sim._agent['robot'].center().x/2.0)*2, round(sim._agent['robot'].center().y/2.0)*2)
-    if sim.sensor_data is None:
-        sensor = 'safe'
-    else:
-        sensor = round(sim.sensor_data[2])
+    '''if sim.left_sensor_data is None and sim.right_sensor_data is None:
+        sensor = ('safe', 'safe')
+    for sens in [sim.left_sensor_data, sim.right_sensor_data]:
+            if sens is not None:
+                sensor = round(sens[2])'''
+    sensor = (round(sim.left_sensor_data[2]/3)*3 if sim.left_sensor_data is not None else 'safe', round(sim.right_sensor_data[2]/3)*3 if sim.right_sensor_data is not None else 'safe')
 
-    velocity = (round(sim._agent['robot'].velocity.x/5.0)*5, round(sim._agent['robot'].velocity.y/5.0)*5)
+    velocity = round(sim._agent['robot'].velocity.length/5.0)*5
+    # velocity = (round(sim._agent['robot'].velocity.x/10.0)*10, round(sim._agent['robot'].velocity.y/10.0)*10)
     direction = (round(sim._agent['robot'].rotation_vector.perpendicular().x), round(sim._agent['robot'].rotation_vector.perpendicular().y))
 
     state = []
-    state.append(sensor)
-    for stat in [velocity, direction]:
+    state.append(velocity)
+    for stat in [sensor, direction]:
         for coord in stat:
             state.append(coord)
     return tuple(state)
@@ -61,12 +68,19 @@ def train_model(epochs=1, Q={}, n={}):
         sim.__init__()
         # Loop unitl reaches goal
         while sim._running:
-            sim.run_controlled()
-            
+            # global is_new_state
+            '''
+            if is_new_state:
+                print("                                                                                ", end='\r')
+                print(f"Epoch: {epoch}, Score: {sim._agent['robot'].score}   new state", end='\r')
+                is_new_state = False
+            else:
+                print("                                                                                ", end='\r')
+            '''
             print(f"Epoch: {epoch}, Score: {score}", end='\r')
 
             current_state = get_state()
-            score = sim._agent['robot'].score
+            score = round(sim._agent['robot'].score, 2)
 
             # Initialize Q and n (if necessary)
             if Q.get((current_state, DEFAULT_ACT)) == None:
@@ -75,10 +89,11 @@ def train_model(epochs=1, Q={}, n={}):
             # Select action a and execute it
             action = sample_next_action(Q, current_state)
             sim._actions(action)
+            sim.run_controlled()
 
             # Observe s' and r
             new_state = get_state()
-            r = sim._agent['robot'].score - score
+            r = round(sim._agent['robot'].score, 2) - score
 
             # Initialize Q and n (if necessary)
             if Q.get((new_state, DEFAULT_ACT)) == None:
@@ -94,6 +109,10 @@ def train_model(epochs=1, Q={}, n={}):
             next_rewards = [Q[(new_state, i)] for i in available_act]
             Q[(current_state, action)] = Q[(current_state, action)] + a*(r + gamma*max(next_rewards) - Q[(current_state, action)])
         print('\n', end='\r')
+
+        f = open('Q.pckl', 'wb')
+        pickle.dump([Q, n], f)
+        f.close()
 
         if epoch%10 == 9:
             f = open('Q.pckl', 'wb')
@@ -114,7 +133,15 @@ def test_model(Q_actual, n_actual):
 
     while sim._running:
         sim.run_controlled()
-        print(f"Score: {sim._agent['robot'].score}", end='\r')
+        '''
+        if new_state:
+            print("                                                                                ", end='\r')
+            print(f"Score: {sim._agent['robot'].score}   new state", end='\r')
+            new_state = False
+        else:
+            print("                                                                                ", end='\r')
+        '''
+        print(f"Score: {round(sim._agent['robot'].score, 2)}", end='\r')
 
         current_state = get_state()
         if Q.get((current_state, DEFAULT_ACT)) == None:
@@ -124,7 +151,7 @@ def test_model(Q_actual, n_actual):
         sim._actions(action)
 
 
-# train = False
+train = False
 
 if train == True:
     if continue_training == True:
@@ -136,7 +163,7 @@ if train == True:
         Q = {}
         n = {}
 
-    Q, n = train_model(50, Q, n)
+    Q, n = train_model(150, Q, n)
     f = open('Q.pckl', 'wb')
     pickle.dump([Q, n], f)
     f.close()

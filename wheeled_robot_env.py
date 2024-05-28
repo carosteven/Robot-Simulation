@@ -1,5 +1,6 @@
 __docformat__ = "reStructeredText"
 
+import random
 import pygame
 import pymunk
 import pymunk.pygame_util
@@ -9,9 +10,11 @@ def limit_velocity(body, gravity, damping, dt):
         pymunk.Body.update_velocity(body, gravity, damping, dt)
         l = body.velocity.length
         if l > max_velocity:
-            body.score -= 50
+            body.score -= 0.25
             scale = max_velocity / l
             body.velocity = body.velocity * scale
+        elif l < 2:
+            body.score -= 0.25
 
 class Wheeled_Robot_Sim(object):
     def __init__(self) -> None:
@@ -43,11 +46,15 @@ class Wheeled_Robot_Sim(object):
         # Available actions
         self.available_act = ['w2_forward', 'w2_backward', 'w1_backward', 'w1_forward', 'nothing']
 
-        self.sensor_data = None
+        self.left_sensor_data = None
+        self.right_sensor_data = None
+        self.distance_to_goal = [600, 600]
 
         # Collision Handling
+        self.collision_occuring = False
         self.handler = self._space.add_collision_handler(0,1)
         self.handler.begin = self.collision_rewards
+        self.handler.separate = self.collision_stop_rewards
         self.goal_handler = self._space.add_collision_handler(0,2)
         self.goal_handler.begin = self.collision_goal
 
@@ -59,17 +66,38 @@ class Wheeled_Robot_Sim(object):
         self._agent['robot'].score += (self._agent['wheel_1'].score + self._agent['wheel_2'].score)
         self._agent['wheel_1'].score = 0
         self._agent['wheel_2'].score = 0
+        # print(pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS()), pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b10), end='\r')
+        self.left_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((-25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
+        self.right_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
+        self.distance_to_goal[0] = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((0, 0)), max_distance=1200, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b11))[2]
+        if self.collision_occuring:
+            self._agent['robot'].score -= 0.25
 
-        self.sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((0, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b1))
-        if self.sensor_data is not None:
-            self._agent['robot'].score -= round((30-self.sensor_data[2])/2)
-        
+        if self.distance_to_goal[0] - self.distance_to_goal[1] < 0:
+            self._agent['robot'].score += 0.25
+            # print('closer ', end='\r')
         else:
+            self._agent['robot'].score -= 0.25
+            # print('further', end='\r')
+        self.distance_to_goal[1] = self.distance_to_goal[0]
+
+        for sensor in [self.left_sensor_data, self.right_sensor_data]:
+            if sensor is not None:
+                # self._agent['robot'].score -= round((30-sensor[2])/60, 2)
+                # print(round((30-sensor[2])/60, 2), end='\r')
+                pass
+        
+        # add reward for velocity in same direction as robot
+        if self.left_sensor_data is None and self.right_sensor_data is None:
+            # self._agent['robot'].score += abs(round(self._agent['robot'].velocity.get_angle_degrees_between(self._agent['robot']. rotation_vector.perpendicular())/720, 2)) # 180 is straight ahead
+            pass
+                        
+            '''
             if self._agent['robot'].velocity.length > 15:
                 self._agent['robot'].score += 1
             else:
                 self._agent['robot'].score += 0
-
+            '''
         if self._agent['wheel_1'].latch:
             if self._agent['wheel_1'].forward:
                 self._agent['wheel_1'].velocity = -abs(self._agent['wheel_1'].velocity) * self._agent['wheel_1'].rotation_vector.perpendicular()
@@ -102,16 +130,6 @@ class Wheeled_Robot_Sim(object):
                     else:
                         self._agent[key].position = self._agent['robot'].local_to_world((30, 15))
 
-        '''for wheel in [self._agent['wheel_1'], self._agent['wheel_2']]:
-                if wheel.velocity.x > 50:
-                    wheel. = 50
-                    self._agent['robot'].score -= 100
-                if vel < -50:
-                    vel = -50
-                    self._agent['robot'].score -= 100'''
-        
-        # if abs(self._agent['robot'].center() - self._agent['wheel_1'].center()) > 33.6:
-
 
     def run(self) -> None:
         """
@@ -123,7 +141,7 @@ class Wheeled_Robot_Sim(object):
             # Progress time forward
             for x in range(self._physics_steps_per_frame):
                 self._space.step(self._dt)
-            
+            # print(self._agent['robot'].score, end='\r')
             self._process_events()
             self._update()
             self._clear_screen()
@@ -158,14 +176,15 @@ class Wheeled_Robot_Sim(object):
         """
         static_body = self._space.static_body
         static_obstacles = [
-            pymunk.Poly(static_body, ((0,150), (325,150), (325, 201), (0,201))),
-            pymunk.Poly(static_body, ((600, 350), (275, 350), (275, 401), (600, 401)))
+            pymunk.Poly(static_body, ((275,150), (325,150), (325, 200), (275,200))),
+            pymunk.Poly(static_body, ((300, 350), (200, 350), (200, 400), (300, 400)))
         ]
         for obstacle in static_obstacles:
             obstacle.elasticity = 0
             obstacle.friction = 1
             obstacle.collision_type = 1
-            obstacle.reward = -5
+            obstacle.filter = pymunk.ShapeFilter(categories=0b10)
+            obstacle.reward = -0.25
         self._space.add(*static_obstacles)
 
         static_border = [
@@ -178,23 +197,21 @@ class Wheeled_Robot_Sim(object):
             line.elasticity = 0.95
             line.friction = 0.9
             line.collision_type = 1
-            line.reward = -5
+            line.reward = -0.25
+            line.filter = pymunk.ShapeFilter(categories=0b10)
         self._space.add(*static_border)
 
         static_goal = [
             pymunk.Poly(static_body, ((0,0), (50,0), (50,150), (0, 150))),
-            pymunk.Poly(static_body, ((275, 350), (375, 350), (375, 300), (275, 300)))
         ]
         
 
 
         static_goal[0].color = (0, 255, 0, 255)
-        static_goal[0].reward = 100
+        static_goal[0].reward = 1
         static_goal[0].collision_type = 2
-        static_goal[0].filter = pymunk.ShapeFilter(categories=0b1)
-        static_goal[1].color = (255, 0, 0, 255)
-        static_goal[1].reward = -50
-        static_goal[1].collision_type = 1
+        static_goal[0].filter = pymunk.ShapeFilter(categories=0b101)
+        # static_goal[0].filter = pymunk.ShapeFilter(categories=0b1)
 
         self._space.add(*static_goal)
     
@@ -254,7 +271,7 @@ class Wheeled_Robot_Sim(object):
             # joint.collide_bodies = False
             pass
         self._space.add(joint_1, joint_2, joint_3, joint_4, joint_5, joint_6)
-
+        robot_body.angle = round(random.randrange(314)/100, 2)
         return {'robot': robot_body, 'wheel_1': wheel_1_body, 'wheel_2': wheel_2_body}
 
     def _process_events(self) -> None:
@@ -291,9 +308,14 @@ class Wheeled_Robot_Sim(object):
     
     def collision_rewards(self, arbiter, space, dummy):
         shapes = arbiter.shapes
-        self._agent['robot'].score += shapes[1].reward
+        # self._agent['robot'].score += shapes[1].reward
+        self.collision_occuring = True
         self._agent['wheel_1'].latch = False
         self._agent['wheel_2'].latch = False
+        return True
+    
+    def collision_stop_rewards(self, arbiter, space, dummy):
+        self.collision_occuring = False
         return True
     
     def collision_goal(self, arbiter, space, dummy):
@@ -322,10 +344,13 @@ class Wheeled_Robot_Sim(object):
         :return: None
         """
         # Negative Reward for taking action
+        self._agent['robot'].score -= 0.25
+        '''
         if action != 'nothing':
             self._agent['robot'].score -= 2
         else:
             self._agent['robot'].score -= 1
+        '''
         '''
         if action == 'w2_forward':
             self._agent['wheel_2'].apply_force_at_world_point(self._agent['wheel_2'].rotation_vector.perpendicular() * -10000, self._agent['wheel_2'].position)
