@@ -4,6 +4,8 @@ import random
 import pygame
 import pymunk
 import pymunk.pygame_util
+import numpy as np
+from PIL import Image
 
 def limit_velocity(body, gravity, damping, dt):
         max_velocity = 100
@@ -15,6 +17,9 @@ def limit_velocity(body, gravity, damping, dt):
 
 def custom_damping(body, gravity, damping, dt):
     pymunk.Body.update_velocity(body, gravity, body.damping, dt)
+
+def distance(pos1, pos2):
+    return abs(pos1 - pos2)
 
 class Easy_Push_Sim(object):
     def __init__(self) -> None:
@@ -30,39 +35,53 @@ class Easy_Push_Sim(object):
 
         # pygame
         pygame.init()
-        self._screen = pygame.display.set_mode((600, 600))
+        screen_size = (600,600)
+        self._screen = pygame.display.set_mode(screen_size)
         self._clock = pygame.time.Clock()
 
         self._draw_options = pymunk.pygame_util.DrawOptions(self._screen)
+        self.pxarr = pygame.PixelArray(self._draw_options.surface)
 
         # Static barrier walls (lines) that the balls bounce off of
         self._add_static_scenery()
         
         # The object to be pushed
-        self._object = self._create_object(radius=10, mass=10, position=(300,300), damping=.99)
+        self._object = self._create_object(radius=10, mass=5, position=(300,300), damping=.99)
 
         # The agent to be controlled
         self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(450, 500), damping=0.99)
         for key in self._agent:
             self._agent[key].score = 0
 
-        # Available actions
-        self.available_act = ['w2_forward', 'w2_backward', 'w1_backward', 'w1_forward', 'nothing']
+        # self.state = np.zeros((screen_size[0], screen_size[1], 3)).astype(int)
+        self.state = np.zeros((screen_size[0], screen_size[1]))
+        self.get_state()
+        self.rgb_conv = np.ones_like(self.state)*255
 
-        self.left_sensor_data = None
-        self.right_sensor_data = None
-        self.distance_to_goal = [600, 600]
+        # Rewards
+        self.collision_penalty = 0.25
+        self.obj_to_goal_reward = 1
+        self.partial_rewards_scale = 2
+
+        # Available actions
+        self.available_actions = ['w2_forward', 'w2_backward', 'w1_backward', 'w1_forward', 'nothing']
+
+        self.goal_position = (25,75)
+        self.initial_object_dist = distance(self._object.position, self.goal_position)
+        self.initial_robot_pos = (450,500)
 
         # Collision Handling
+        # Robot: 0, Obstacles: 1, Goal: 2, Object: 3
         self.collision_occuring = False
         self.handler = self._space.add_collision_handler(0,1)
-        self.handler.begin = self.collision_rewards
-        self.handler.separate = self.collision_stop_rewards
-        self.goal_handler = self._space.add_collision_handler(0,2)
+        self.handler.begin = self.collision_begin
+        self.handler.separate = self.collision_end
+        self.goal_handler = self._space.add_collision_handler(3,2)
         self.goal_handler.begin = self.collision_goal
 
         # Execution control
         self._running = True
+        self._done = False
 
     def _add_static_scenery(self) -> None:
         """
@@ -108,14 +127,17 @@ class Easy_Push_Sim(object):
         object_body.damping = damping
         object_body.velocity_func = custom_damping
         
-        object = pymunk.Circle(object_body, radius)
+        # object = pymunk.Circle(object_body, radius)
+        object = pymunk.Poly(object_body, ((-radius, -radius), (-radius, radius), (radius, radius), (radius, -radius)))
         object.label = 'object'
         object.mass = mass
         object.elasticity = elasticity
         object.friction = friction
-        object.collision_type = 0
+        object.collision_type = 3
         # object.filter = pymunk.ShapeFilter(categories=0b1)
         self._space.add(object_body, object)
+
+        return object_body
     
     def _create_agent(self, vertices: list[tuple[int, int]], mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 1.0) -> pymunk.Poly:
         """
@@ -185,28 +207,62 @@ class Easy_Push_Sim(object):
             self._update()
             self._clear_screen()
             self._draw_objects()
+            self.get_state()
             
             pygame.display.flip()
             # Delay fixed time between frames
             self._clock.tick(110)
             pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
+
+            # Calculate reward
+            robot_reward = self.get_reward()
+            self._agent['robot'].score += robot_reward
+            # print(self._agent['robot'].score, end='\r')
+            
+            if self._done:
+                self.reset()
     
-    def run_controlled(self) -> None:
+    def step(self, action):
+        """
+        Progress the simulation one time step
+        inputs: action
+        outputs: state, reward, done, info
+        """
         # Progress time forward
         for x in range(self._physics_steps_per_frame):
             self._space.step(self._dt)
 
-        '''for constraint in self._space._constraints:
-            constraint._set_distance = 0'''
         self._process_events()
+        self._actions(action)
         self._update()
         self._clear_screen()
         self._draw_objects()
+        self.get_state()
         
-        pygame.display.flip()
+        # pygame.display.flip()
         # Delay fixed time between frames
         self._clock.tick(230)
         pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
+
+        # Calculate reward
+        robot_reward = self.get_reward()
+        self._agent['robot'].score += robot_reward
+
+        # Items to return
+        state = self.state
+        reward = robot_reward
+        done = self._done
+        robot_distance = distance(self.initial_robot_pos, self._agent['robot'].position)
+        self.initial_robot_pos = self._agent['robot'].position
+        ministeps = robot_distance / 0.25
+        info = { # To match SAM
+            'ministeps': ministeps,
+            'inactivity': None,
+            'cumulative_cubes': 0,
+            'cumulative_distance': 0,
+            'cumulative_reward': self._agent['robot'].score
+        }
+        return state, reward, done, info
     
     def _process_events(self) -> None:
         """
@@ -308,26 +364,81 @@ class Easy_Push_Sim(object):
             self._agent['wheel_1'].latch = True
             self._agent['wheel_1'].forward = True
 
-    def collision_rewards(self, arbiter, space, dummy):
+    def collision_begin(self, arbiter, space, dummy):
         shapes = arbiter.shapes
         self.collision_occuring = True
         self._agent['wheel_1'].latch = False
         self._agent['wheel_2'].latch = False
         return True
     
-    def collision_stop_rewards(self, arbiter, space, dummy):
+    def collision_end(self, arbiter, space, dummy):
         self.collision_occuring = False
         return True
     
     def collision_goal(self, arbiter, space, dummy):
         shapes = arbiter.shapes
-        self._running = False
+        self._done = True
         return True
- 
+
+    def get_state(self):
+        """
+        Gets integer pixel values from screen and bit converts them to 3 channel RGB
+        """
+        # self.state = np.transpose(np.array([np.right_shift(self.pxarr[:,:],16), np.right_shift(self.pxarr[:,:],8), self.pxarr[:,:]]))
+        # self.state = np.array([np.right_shift(self.pxarr[:,:],16), np.right_shift(self.pxarr[:,:],8), self.pxarr[:,:]])
+        # print(self.state.shape)
+        # self.state = np.bitwise_and(self.state, self.rgb_conv).astype('uint8')
+        x,y = self._agent['robot'].position
+        x_low = round(x-100) if x-100 > 0 else 0
+        x_high = round(x+100) if x+100 < 600 else 600
+        y_low = round(y-100) if y-100 > 0 else 0
+        y_high = round(y+100) if y+100 < 600 else 600
+
+        x_idx_high = x_high-x_low if x_high == 600 else 200
+        x_idx_low = 200-x_high if x_low == 0 else 0
+        y_idx_high = y_high-y_low if y_high == 600 else 200
+        y_idx_low = 200-y_high if y_low == 0 else 0
         
+        self.state = np.zeros((200,200)).astype('uint8')
+        # print(f"{x_low}:{x_high}, {y_low}:{y_high}")
+        # print(f"{x_idx_low}:{x_idx_high}, {y_idx_low}:{y_idx_high}")
+        self.state[x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
+        # print(self.state[199,199])
+
+    def get_reward(self):
+        """
+        Penalty for collision with walls
+        Reward for pushing object into goal
+        Partial reward/penalty for pushing object closer to / further from goal
+        """
+        reward = 0
+        if self.collision_occuring:
+            reward -= self.collision_penalty
+        
+        if self._done:
+            reward += self.obj_to_goal_reward
+
+        dist = distance(self._object.position, self.goal_position)
+        dist_moved = self.initial_object_dist - dist
+        self.initial_object_dist = dist
+        reward += self.partial_rewards_scale*dist_moved
+
+        return reward
+    
+    def reset(self):
+        cumulative_reward = self._agent['robot'].score
+        self.__init__()
+        self._agent['robot'].score = cumulative_reward
+        return self.state
+        
+    def close(self):
+        self._running = False
+
 def main():
     game = Easy_Push_Sim()
     game.run()
+    # img = Image.fromarray(game.state)
+    # img.show()
 
 if __name__ == "__main__":
     main()
