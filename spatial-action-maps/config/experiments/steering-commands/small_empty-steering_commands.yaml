@@ -1,4 +1,4 @@
-batch_size: 1
+batch_size: 32
 checkpoint_dir: null
 checkpoint_freq: 1000
 checkpoint_path: null
