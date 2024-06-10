@@ -280,6 +280,6 @@ if __name__ == '__main__':
     '''parser = argparse.ArgumentParser()
     parser.add_argument('config_path')
     config_path = parser.parse_args().config_path'''
-    config_path = 'C:\_Repos\Robot-Simulation\spatial-action-maps\config\experiments\steering-commands\small_empty-steering_commands.yaml'
+    config_path = 'small_empty-steering_commands.yaml'
     config_path = utils.setup_run(config_path)
     main(utils.read_config(config_path))
