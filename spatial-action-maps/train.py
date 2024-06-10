@@ -53,7 +53,6 @@ def train(cfg, policy_net, target_net, optimizer, batch, transform_func):
     state_batch = torch.cat([transform_func(s) for s in batch.state]).to(device)  # (32, 3, 96, 96)
     action_batch = torch.tensor(batch.action, dtype=torch.long).to(device)  # (32,)
     reward_batch = torch.tensor(batch.reward, dtype=torch.float32).to(device)  # (32,)
-    # print(f"ab: {action_batch.shape}, rb: {reward_batch.shape}")
     ministeps_batch = torch.tensor(batch.ministeps, dtype=torch.float32).to(device)  # (32,)
     non_final_next_states = torch.cat([transform_func(s) for s in batch.next_state if s is not None]).to(device, non_blocking=True)  # (?32, 3, 96, 96)
 

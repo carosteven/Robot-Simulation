@@ -23,6 +23,7 @@ class DQNPolicy:
             self.policy_net.load_state_dict(model_checkpoint['state_dict'])
             if self.train:
                 self.policy_net.train()
+                
             else:
                 self.policy_net.eval()
             print("=> loaded model '{}'".format(self.cfg.model_path))'''

@@ -10,7 +10,6 @@ from prompt_toolkit.shortcuts import radiolist_dialog
 from easy_push_env import Easy_Push_Sim
 import policies
 
-
 ################################################################################
 # Experiment management
 
