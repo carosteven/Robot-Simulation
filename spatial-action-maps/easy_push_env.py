@@ -117,7 +117,8 @@ class Easy_Push_Sim(object):
 
         self._space.add(*static_goal)
 
-    def _create_object(self, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
+    # def _create_object(self, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
+    def _create_object(self, radius, mass, position = (0,0), elasticity = 0, friction = 1.0, damping = 0.0) -> pymunk.Poly:
         """
         Create the object to be pushed
         :return: Pymunk Polygon
@@ -139,7 +140,8 @@ class Easy_Push_Sim(object):
 
         return object_body
     
-    def _create_agent(self, vertices: list[tuple[int, int]], mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 1.0) -> pymunk.Poly:
+    # def _create_agent(self, vertices: list[tuple[int, int]], mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 1.0) -> pymunk.Poly:
+    def _create_agent(self, vertices, mass, position, elasticity = 0, friction = 1.0, damping = 1.0) -> pymunk.Poly:
         """
         Create the agent
         :return: Pymunk Polygon
