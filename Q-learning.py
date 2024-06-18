@@ -128,6 +128,7 @@ def train_model(epochs=1, Q={}, n={}):
 
 def test_model(Q_actual, n_actual):
     sim.__init__()
+    input()
     Q = Q_actual
     n = n_actual
 
