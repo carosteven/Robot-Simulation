@@ -10,9 +10,11 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
+import sys
+sys.path.insert(1, './environments')
 from wheeled_robot_env import Wheeled_Robot_Sim
 
-env = Wheeled_Robot_Sim()
+env = Wheeled_Robot_Sim(state_type='')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 Transition = namedtuple('Transition',
@@ -23,7 +25,7 @@ n_actions = len(env.available_actions)
 # Get numbaer of state observations
 state = env.reset()
 n_observations = len(state)
-checkpoint_path = 'model.pt'
+checkpoint_path = 'model - no pushing.pt'
 
 class DQN(nn.Module):
     """
@@ -60,8 +62,8 @@ while not done:
     action = select_action(state)
     state, reward, done, info = env.step(env.available_actions[action])
     state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-    '''if done:
+    if done:
         state = env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-        done = False'''
+        done = False
 print(reward)

@@ -42,6 +42,7 @@ class Wheeled_Robot_Sim(object):
         self._clock = pygame.time.Clock()
 
         self._draw_options = pymunk.pygame_util.DrawOptions(self._screen)
+        self.pxarr = pygame.PixelArray(self._draw_options.surface)
 
         # Static barrier walls (lines) that the balls bounce off of
         self._add_static_scenery()
@@ -52,12 +53,14 @@ class Wheeled_Robot_Sim(object):
         for key in self._agent:
             self._agent[key].score = 0
 
-        # self.state = np.zeros((screen_size[0], screen_size[1], 3)).astype(int)
-        self.left_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((-25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
-        self.right_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
-        self.state = np.zeros((1,2))
-        self.get_state()
-        self.rgb_conv = np.ones_like(self.state)*255
+        if self.state_type == 'vision':
+            self.state = np.zeros((1, screen_size[0], screen_size[1])).astype(int)
+            self.get_vision_state()
+        else:
+            self.left_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((-25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
+            self.right_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
+            self.state = np.zeros((1,2))
+            self.get_state()
 
         # Rewards
         self.collision_penalty = 0.25
@@ -76,7 +79,7 @@ class Wheeled_Robot_Sim(object):
         self.initial_robot_pos = (450,500)
 
         # Collision Handling
-        # Robot: 0, Obstacles: 1, Goal: 2, Object: 3
+        # Robot: 0, Obstacles: 1, Goal: 2
         self.collision_occuring = False
         self.handler = self._space.add_collision_handler(0,1)
         self.handler.begin = self.collision_begin
@@ -206,7 +209,7 @@ class Wheeled_Robot_Sim(object):
                 self.get_vision_state()
             else:
                 self.get_state()
-            
+
             pygame.display.flip()
             # Delay fixed time between frames
             self._clock.tick(110)
@@ -404,7 +407,7 @@ class Wheeled_Robot_Sim(object):
     
     def get_vision_state(self):
         """
-        Gets integer pixel values from screen and bit converts them to 3 channel RGB
+        Gets integer pixel values from screen
         """
         x,y = self._agent['robot'].position
         x_low = round(x-100) if x-100 > 0 else 0
@@ -417,8 +420,8 @@ class Wheeled_Robot_Sim(object):
         y_idx_high = y_high-y_low if y_high == 600 else 200
         y_idx_low = 200-y_high if y_low == 0 else 0
         
-        self.state = np.zeros((200,200)).astype('uint8')
-        self.state[x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
+        self.state = np.zeros((1,200,200))
+        self.state[0,x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
 
     def get_reward(self):
         """
@@ -442,7 +445,7 @@ class Wheeled_Robot_Sim(object):
     
     def reset(self):
         cumulative_reward = self._agent['robot'].score
-        self.__init__()
+        self.__init__(state_type=self.state_type)
         self._agent['robot'].score = cumulative_reward
         return self.state
     

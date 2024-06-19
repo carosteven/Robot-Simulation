@@ -11,9 +11,13 @@ import torch.optim as optim
 import torch.nn.functional as F
 from tqdm import tqdm
 
+import sys
+sys.path.insert(1, './environments')
 from wheeled_robot_env import Wheeled_Robot_Sim
+import models
 
-env = Wheeled_Robot_Sim()
+state_type = 'vision'
+env = Wheeled_Robot_Sim(state_type=state_type)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -34,28 +38,6 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self.memory)
     
-class DQN(nn.Module):
-    """
-    feed-forward nn
-    takes difference between current and previous screen patch
-    tries to predict the expected return of taking each action given current input
-    """
-    def __init__(self, n_observations, n_actions):
-        super(DQN, self).__init__()
-        self.layer1 = nn.Linear(n_observations, 128)
-        self.layer2 = nn.Linear(128, 128)
-        self.layer3 = nn.Linear(128, n_actions)
-    
-    # Called with either one element to determine next action, or a batch
-    # during optimization. Returns tensor([[left0exp,right0exp]...])
-    def forward(self, x):
-        # print(x.shape)
-        x = F.relu(self.layer1(x))
-        # print(x.shape)
-        x = F.relu(self.layer2(x))
-        # print(x.shape)
-        return self.layer3(x)
-    
 # BATCH_SIZE is the number of transitions sampled from the replay buffer
 # GAMMA is the discount factor
 # EPS_START is the starting value of epsilon
@@ -64,7 +46,7 @@ class DQN(nn.Module):
 # TAU is the update rate of the target network
 # LR is the learning rate of the ``AdamW`` optimizer
 
-BATCH_SIZE = 128
+BATCH_SIZE = 16
 GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
@@ -74,13 +56,17 @@ LR = 1e-4
 
 # Get number of actions from env
 n_actions = len(env.available_actions)
-# Get numbaer of state observations
+# Get number of state observations
 # state, info = env.reset()
 state = env.reset()
 n_observations = len(state)
 
-policy_net = DQN(n_observations, n_actions).to(device)
-target_net = DQN(n_observations, n_actions).to(device)
+if state_type == 'vision':
+    policy_net = models.VisionDQN(n_observations, n_actions).to(device)
+    target_net = models.VisionDQN(n_observations, n_actions).to(device)
+else:    
+    policy_net = models.SensorDQN(n_observations, n_actions).to(device)
+    target_net = models.SensorDQN(n_observations, n_actions).to(device)
 target_net.load_state_dict(policy_net.state_dict())
 
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
@@ -179,14 +165,16 @@ def optimize_model(save_checkpoint=False):
 
 
 
-num_episodes = 50
+num_epochs = 50
+num_samples = 1000
 
-for i_episode in tqdm(range(num_episodes)):
+for i_epochs in tqdm(range(num_epochs)):
     # Initialize the environment and get its state
     state = env.reset()
     state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
     # print(state.shape)
-    for t in count():
+    # for t in count():
+    for t in tqdm(range(num_samples)):
         action = select_action(state)
         observation, reward, done, info = env.step(env.available_actions[action])
         reward = torch.tensor([reward], device=device)
