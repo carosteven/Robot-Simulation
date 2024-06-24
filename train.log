@@ -1,0 +1,33 @@
+INFO:root:starting training script
+INFO:root:No checkpoint detected, starting from initial state
+INFO:root:starting training script
+INFO:root:No checkpoint detected, starting from initial state
+INFO:root:2024-06-20 18:02:33: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-20 19:02:33: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-20 20:02:33: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-20 21:02:33: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-20 22:02:33: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-20 23:02:34: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 00:02:34: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 01:02:34: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 02:02:35: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 03:02:34: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 04:02:35: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 05:02:35: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:starting training script
+INFO:root:Training state restored at epoch 13
+INFO:root:2024-06-21 14:01:22: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 15:01:22: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 16:01:22: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 17:01:22: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 18:01:23: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 19:01:23: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 20:01:23: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 21:01:23: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 22:01:23: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-21 23:01:24: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-22 00:01:24: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:starting training script
+INFO:root:Training state restored at epoch 41
+INFO:root:2024-06-22 10:14:39: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:2024-06-22 11:14:40: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
