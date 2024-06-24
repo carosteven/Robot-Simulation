@@ -201,7 +201,6 @@ class Train_DQL():
             # print(state.shape)
             # for t in tqdm(range(1000)):
             for t in count():
-                print(t, end='\r')
                 action = self.select_action()
                 observation, reward, done, info = env.step(env.available_actions[action])
                 reward = torch.tensor([reward], device=self.device)
