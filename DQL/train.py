@@ -24,7 +24,8 @@ from nav_obstacle_env import Nav_Obstacle_Env
 from push_empty_env import Push_Empty_Env
 import models
 
-env = Nav_Obstacle_Env()
+# env = Nav_Obstacle_Env()
+env = None
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
@@ -240,14 +241,25 @@ class Train_DQL():
             print()
             self.epoch += 1
 
+def env_selector(env_num):
+    if env_num == 0:
+        return Nav_Obstacle_Env
+    elif env_num == 1:
+        return Push_Empty_Env
+    else:
+        print("Bad environment selection")
+        return None
+
 def main(args):
-    global BATCH_SIZE
+    global BATCH_SIZE, env
     if args.log_file is not None:
         logging.basicConfig(filename=args.log_file,level=logging.DEBUG)
     
     logging.info("starting training script")
 
+    env = env_selector(args.environment)
     env.state_type = args.state_type
+    
     BATCH_SIZE = args.batch_size
 
     train = Train_DQL(args.state_type, args.checkpoint_path, args.checkpoint_interval, args.num_epoch)

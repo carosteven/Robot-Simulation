@@ -31,3 +31,5 @@ INFO:root:starting training script
 INFO:root:Training state restored at epoch 41
 INFO:root:2024-06-22 10:14:39: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
 INFO:root:2024-06-22 11:14:40: Checkpoint saved at /h/steve22/repos/Robot-Simulation/checkpoint/checkpoint.pt
+INFO:root:starting training script
+INFO:root:Training state restored at epoch 47
