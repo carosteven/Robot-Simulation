@@ -25,7 +25,8 @@ n_actions = len(env.available_actions)
 # Get numbaer of state observations
 state = env.reset()
 n_observations = len(state)
-checkpoint_path = 'model - no pushing.pt'
+# checkpoint_path = 'model - no pushing.pt'
+checkpoint_path = 'checkpoint/checkpoint.pt'
 
 class DQN(nn.Module):
     """

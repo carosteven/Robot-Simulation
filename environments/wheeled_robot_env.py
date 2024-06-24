@@ -36,7 +36,9 @@ class Wheeled_Robot_Sim(object):
         self._physics_steps_per_frame = 1
 
         # pygame
-        pygame.init()
+        # pygame.init()
+        pygame.display.init()
+        pygame.font.init()
         screen_size = (600,600)
         self._screen = pygame.display.set_mode(screen_size)
         self._clock = pygame.time.Clock()
