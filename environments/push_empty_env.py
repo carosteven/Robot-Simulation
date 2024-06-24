@@ -5,7 +5,7 @@ import pygame
 import pymunk
 import pymunk.pygame_util
 import numpy as np
-from numpy import pi
+from PIL import Image
 
 def limit_velocity(body, gravity, damping, dt):
         max_velocity = 100
@@ -21,10 +21,8 @@ def custom_damping(body, gravity, damping, dt):
 def distance(pos1, pos2):
     return abs(pos1 - pos2)
 
-class Wheeled_Robot_Sim(object):
-    def __init__(self, state_type='vision') -> None:
-        self.state_type = state_type
-
+class Push_Empty_Env(object):
+    def __init__(self) -> None:
         # Space
         self._space = pymunk.Space()
         self._space.gravity = (0.0, 0.0)
@@ -36,9 +34,7 @@ class Wheeled_Robot_Sim(object):
         self._physics_steps_per_frame = 1
 
         # pygame
-        # pygame.init()
-        pygame.display.init()
-        pygame.font.init()
+        pygame.init()
         screen_size = (600,600)
         self._screen = pygame.display.set_mode(screen_size)
         self._clock = pygame.time.Clock()
@@ -48,21 +44,19 @@ class Wheeled_Robot_Sim(object):
 
         # Static barrier walls (lines) that the balls bounce off of
         self._add_static_scenery()
+        
+        # The object to be pushed
+        self._object = self._create_object(radius=10, mass=5, position=(300,300), damping=.99)
 
         # The agent to be controlled
-        y_pos = random.randint(50,550)
-        self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(450, y_pos), damping=0.99)
+        self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(450, 500), damping=0.99)
         for key in self._agent:
             self._agent[key].score = 0
 
-        if self.state_type == 'vision':
-            self.state = np.zeros((1, screen_size[0], screen_size[1])).astype(int)
-            self.get_vision_state()
-        else:
-            self.left_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((-25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
-            self.right_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
-            self.state = np.zeros((1,2))
-            self.get_state()
+        # self.state = np.zeros((screen_size[0], screen_size[1], 3)).astype(int)
+        self.state = np.zeros((screen_size[0], screen_size[1]))
+        self.get_state()
+        self.rgb_conv = np.ones_like(self.state)*255
 
         # Rewards
         self.collision_penalty = 0.25
@@ -70,26 +64,22 @@ class Wheeled_Robot_Sim(object):
         self.partial_rewards_scale = 2
 
         # Available actions
-        self.available_actions = ['w2_forward', 'w2_backward', 'w1_backward', 'w1_forward']
-
-        self.left_sensor_data = None
-        self.right_sensor_data = None
-        self.distance_to_goal = [600, 600]
+        self.available_actions = ['w2_forward', 'w2_backward', 'w1_backward', 'w1_forward', 'nothing']
 
         self.goal_position = (25,75)
-        self.initial_agent_dist = distance(self._agent['robot'].position, self.goal_position)
+        self.initial_object_dist = distance(self._object.position, self.goal_position)
         self.initial_robot_pos = (450,500)
 
         # Collision Handling
-        # Robot: 0, Obstacles: 1, Goal: 2
+        # Robot: 0, Obstacles: 1, Goal: 2, Object: 3
         self.collision_occuring = False
         self.handler = self._space.add_collision_handler(0,1)
         self.handler.begin = self.collision_begin
         self.handler.separate = self.collision_end
-        self.goal_handler = self._space.add_collision_handler(0,2)
+        self.goal_handler = self._space.add_collision_handler(3,2)
         self.goal_handler.begin = self.collision_goal
 
-        # Execution control and time unitl the next ball spawns
+        # Execution control
         self._running = True
         self._done = False
 
@@ -99,17 +89,6 @@ class Wheeled_Robot_Sim(object):
         :return: None
         """
         static_body = self._space.static_body
-        static_obstacles = [
-            pymunk.Poly(static_body, ((275,150), (325,150), (325, 200), (275,200))),
-            pymunk.Poly(static_body, ((300, 350), (200, 350), (200, 400), (300, 400)))
-        ]
-        for obstacle in static_obstacles:
-            obstacle.elasticity = 0
-            obstacle.friction = 1
-            obstacle.collision_type = 1
-            obstacle.filter = pymunk.ShapeFilter(categories=0b10)
-            obstacle.reward = -0.25
-        self._space.add(*static_obstacles)
 
         static_border = [
             pymunk.Segment(static_body, (0,0), (0,600), 1),
@@ -135,11 +114,34 @@ class Wheeled_Robot_Sim(object):
         static_goal[0].reward = 1
         static_goal[0].collision_type = 2
         static_goal[0].filter = pymunk.ShapeFilter(categories=0b101)
-        # static_goal[0].filter = pymunk.ShapeFilter(categories=0b1)
 
         self._space.add(*static_goal)
 
-    def _create_agent(self, vertices: list[tuple[int, int]], mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1, damping: float = 1.0) -> pymunk.Poly:
+    # def _create_object(self, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
+    def _create_object(self, radius, mass, position = (0,0), elasticity = 0, friction = 1.0, damping = 0.0) -> pymunk.Poly:
+        """
+        Create the object to be pushed
+        :return: Pymunk Polygon
+        """
+        object_body = pymunk.Body()
+        object_body.position = position
+        object_body.damping = damping
+        object_body.velocity_func = custom_damping
+        
+        # object = pymunk.Circle(object_body, radius)
+        object = pymunk.Poly(object_body, ((-radius, -radius), (-radius, radius), (radius, radius), (radius, -radius)))
+        object.label = 'object'
+        object.mass = mass
+        object.elasticity = elasticity
+        object.friction = friction
+        object.collision_type = 3
+        # object.filter = pymunk.ShapeFilter(categories=0b1)
+        self._space.add(object_body, object)
+
+        return object_body
+    
+    # def _create_agent(self, vertices: list[tuple[int, int]], mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 1.0) -> pymunk.Poly:
+    def _create_agent(self, vertices, mass, position, elasticity = 0, friction = 1.0, damping = 1.0) -> pymunk.Poly:
         """
         Create the agent
         :return: Pymunk Polygon
@@ -188,13 +190,13 @@ class Wheeled_Robot_Sim(object):
         joint_3 = pymunk.constraints.PinJoint(robot.body, wheel_2.body, (25,25), (-5,10))
         joint_4 = pymunk.constraints.PinJoint(robot.body, wheel_2.body, (25,5), (-5,-10))
         joint_6 = pymunk.constraints.PinJoint(wheel_1.body, wheel_2.body, (-5,0), (5,0))
-        
+
         self._space.add(joint_1, joint_2, joint_3, joint_4, joint_5, joint_6)
         return {'robot': robot_body, 'wheel_1': wheel_1_body, 'wheel_2': wheel_2_body}
 
     def run(self) -> None:
         """
-        The mail loop of the game
+        The main loop of the game
         :return: None
         """
         # Main Loop
@@ -202,16 +204,13 @@ class Wheeled_Robot_Sim(object):
             # Progress time forward
             for x in range(self._physics_steps_per_frame):
                 self._space.step(self._dt)
-            # print(self._agent['robot'].score, end='\r')
+
             self._process_events()
             self._update()
             self._clear_screen()
             self._draw_objects()
-            if self.state_type == 'vision':
-                self.get_vision_state()
-            else:
-                self.get_state()
-
+            self.get_state()
+            
             pygame.display.flip()
             # Delay fixed time between frames
             self._clock.tick(110)
@@ -240,13 +239,10 @@ class Wheeled_Robot_Sim(object):
         self._update()
         self._clear_screen()
         self._draw_objects()
-        if self.state_type == 'vision':
-            self.get_vision_state()
-        else:
-            self.get_state()
+        self.get_state()
         
-        pygame.display.flip()
-
+        # pygame.display.flip()
+        
         # Delay fixed time between frames
         self._clock.tick(230)
         pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
@@ -270,7 +266,7 @@ class Wheeled_Robot_Sim(object):
             'cumulative_reward': self._agent['robot'].score
         }
         return state, reward, done, info
-
+    
     def _process_events(self) -> None:
         """
         Handle game and events like keyboard input. Call once per frame only.
@@ -299,19 +295,7 @@ class Wheeled_Robot_Sim(object):
                     elif keys[pygame.K_RIGHT]:
                         self._actions('w1_forward')
     
-    def _update(self):
-        # print(pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS()), pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b10), end='\r')
-        self.left_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((-25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
-        self.right_sensor_data = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((25, -25)), max_distance=30, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b101))
-        self.distance_to_goal[0] = self._space.point_query_nearest(point=self._agent['robot'].local_to_world((0, 0)), max_distance=1200, shape_filter=pymunk.ShapeFilter(mask=pymunk.ShapeFilter.ALL_MASKS() ^ 0b11))[2]
-        self.distance_to_goal[1] = self.distance_to_goal[0]
-
-        for sensor in [self.left_sensor_data, self.right_sensor_data]:
-            if sensor is not None:
-                # self._agent['robot'].score -= round((30-sensor[2])/60, 2)
-                # print(round((30-sensor[2])/60, 2), end='\r')
-                pass
-
+    def _update(self) -> None:
         if self._agent['wheel_1'].latch:
             if self._agent['wheel_1'].forward:
                 self._agent['wheel_1'].velocity = -abs(self._agent['wheel_1'].velocity) * self._agent['wheel_1'].rotation_vector.perpendicular()
@@ -357,24 +341,27 @@ class Wheeled_Robot_Sim(object):
         :return: None
         """
         self._space.debug_draw(self._draw_options)
-    
+
     def _actions(self, action) -> None:
         """
-        action: 'w2_forward', 'w2_backward', 'w1_backward', 'w1_forward'
+        action: 'w2_forward', 'w2_backward', 'w1_backward', 'w1_forward', 'nothing'
         :return: None
         """
         if action == 'w2_forward':
             self._agent['wheel_2'].velocity += self._agent['wheel_2'].rotation_vector.perpendicular() * -50
             self._agent['wheel_2'].latch = True
             self._agent['wheel_2'].forward = True
+
         elif action == 'w2_backward':
             self._agent['wheel_2'].velocity += self._agent['wheel_2'].rotation_vector.perpendicular() * 50
             self._agent['wheel_2'].latch = True
             self._agent['wheel_2'].forward = False
+
         elif action == 'w1_backward':
             self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * 50
             self._agent['wheel_1'].latch = True
             self._agent['wheel_1'].forward = False
+
         elif action == 'w1_forward':
             self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * -50
             self._agent['wheel_1'].latch = True
@@ -395,22 +382,15 @@ class Wheeled_Robot_Sim(object):
         shapes = arbiter.shapes
         self._done = True
         return True
-    
+
     def get_state(self):
-        """left/right sensor data and direction (angle in rad)"""
-        state = []
-        for sensor in [self.left_sensor_data, self.right_sensor_data]:
-            if sensor is not None:
-                state.append(sensor[2])
-            else:
-                state.append(100)
-        state.append(self._agent['robot'].angle%(2*pi))
-        self.state = np.array(state)
-    
-    def get_vision_state(self):
         """
-        Gets integer pixel values from screen
+        Gets integer pixel values from screen and bit converts them to 3 channel RGB
         """
+        # self.state = np.transpose(np.array([np.right_shift(self.pxarr[:,:],16), np.right_shift(self.pxarr[:,:],8), self.pxarr[:,:]]))
+        # self.state = np.array([np.right_shift(self.pxarr[:,:],16), np.right_shift(self.pxarr[:,:],8), self.pxarr[:,:]])
+        # print(self.state.shape)
+        # self.state = np.bitwise_and(self.state, self.rgb_conv).astype('uint8')
         x,y = self._agent['robot'].position
         x_low = round(x-100) if x-100 > 0 else 0
         x_high = round(x+100) if x+100 < 600 else 600
@@ -422,8 +402,11 @@ class Wheeled_Robot_Sim(object):
         y_idx_high = y_high-y_low if y_high == 600 else 200
         y_idx_low = 200-y_high if y_low == 0 else 0
         
-        self.state = np.zeros((1,200,200))
-        self.state[0,x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
+        self.state = np.zeros((200,200)).astype('uint8')
+        # print(f"{x_low}:{x_high}, {y_low}:{y_high}")
+        # print(f"{x_idx_low}:{x_idx_high}, {y_idx_low}:{y_idx_high}")
+        self.state[x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
+        # print(self.state.shape)
 
     def get_reward(self):
         """
@@ -438,26 +421,27 @@ class Wheeled_Robot_Sim(object):
         if self._done:
             reward += self.obj_to_goal_reward
 
-        dist = distance(self._agent['robot'].position, self.goal_position)
-        dist_moved = self.initial_agent_dist - dist
-        self.initial_agent_dist = dist
+        dist = distance(self._object.position, self.goal_position)
+        dist_moved = self.initial_object_dist - dist
+        self.initial_object_dist = dist
         reward += self.partial_rewards_scale*dist_moved
 
         return reward
     
     def reset(self):
         cumulative_reward = self._agent['robot'].score
-        self.__init__(state_type=self.state_type)
+        self.__init__()
         self._agent['robot'].score = cumulative_reward
         return self.state
-    
+        
     def close(self):
         self._running = False
 
-        
 def main():
-    game = Wheeled_Robot_Sim()
+    game = Push_Empty_Env()
     game.run()
+    # img = Image.fromarray(game.state)
+    # img.show()
 
 if __name__ == "__main__":
     main()

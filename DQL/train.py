@@ -20,10 +20,11 @@ sys.path.insert(1, './environments')
 import logging
 logging.getLogger('pymunk').propagate = False
 
-from wheeled_robot_env import Wheeled_Robot_Sim
+from nav_obstacle_env import Nav_Obstacle_Env
+from push_empty_env import Push_Empty_Env
 import models
 
-env = Wheeled_Robot_Sim()
+env = Nav_Obstacle_Env()
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
@@ -306,6 +307,13 @@ if __name__ == "__main__":
         type=str,
         help='specify the loaction of the output directory, default stdout',
         default=None
+    )
+
+    parser.add_argument(
+        '--environment',
+        type=str,
+        help='environment to simulate- 0: nav_obstacle, 1: push_empty',
+        default=0
     )
 
     main(parser.parse_args())
