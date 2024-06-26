@@ -34,7 +34,8 @@ class Push_Empty_Env(object):
         self._physics_steps_per_frame = 1
 
         # pygame
-        pygame.init()
+        pygame.display.init()
+        pygame.font.init()
         screen_size = (600,600)
         self._screen = pygame.display.set_mode(screen_size)
         self._clock = pygame.time.Clock()
@@ -49,14 +50,13 @@ class Push_Empty_Env(object):
         self._object = self._create_object(radius=10, mass=5, position=(300,300), damping=.99)
 
         # The agent to be controlled
-        self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(450, 500), damping=0.99)
+        y_pos = random.randint(50,550)
+        self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(450, y_pos), damping=0.99)
         for key in self._agent:
             self._agent[key].score = 0
 
-        # self.state = np.zeros((screen_size[0], screen_size[1], 3)).astype(int)
-        self.state = np.zeros((screen_size[0], screen_size[1]))
+        self.state = np.zeros((1, screen_size[0], screen_size[1])).astype(int)
         self.get_state()
-        self.rgb_conv = np.ones_like(self.state)*255
 
         # Rewards
         self.collision_penalty = 0.25
@@ -64,7 +64,7 @@ class Push_Empty_Env(object):
         self.partial_rewards_scale = 2
 
         # Available actions
-        self.available_actions = ['w2_forward', 'w2_backward', 'w1_backward', 'w1_forward', 'nothing']
+        self.available_actions = ['w2_forward', 'w2_backward', 'w1_backward', 'w1_forward']
 
         self.goal_position = (25,75)
         self.initial_object_dist = distance(self._object.position, self.goal_position)
@@ -100,7 +100,6 @@ class Push_Empty_Env(object):
             line.elasticity = 0.95
             line.friction = 0.9
             line.collision_type = 1
-            line.reward = -0.25
             line.filter = pymunk.ShapeFilter(categories=0b10)
         self._space.add(*static_border)
 
@@ -111,14 +110,12 @@ class Push_Empty_Env(object):
 
 
         static_goal[0].color = (0, 255, 0, 255)
-        static_goal[0].reward = 1
         static_goal[0].collision_type = 2
         static_goal[0].filter = pymunk.ShapeFilter(categories=0b101)
 
         self._space.add(*static_goal)
 
-    # def _create_object(self, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
-    def _create_object(self, radius, mass, position = (0,0), elasticity = 0, friction = 1.0, damping = 0.0) -> pymunk.Poly:
+    def _create_object(self, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
         """
         Create the object to be pushed
         :return: Pymunk Polygon
@@ -140,8 +137,8 @@ class Push_Empty_Env(object):
 
         return object_body
     
-    # def _create_agent(self, vertices: list[tuple[int, int]], mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 1.0) -> pymunk.Poly:
-    def _create_agent(self, vertices, mass, position, elasticity = 0, friction = 1.0, damping = 1.0) -> pymunk.Poly:
+    # def _create_agent(self, vertices, mass, position, elasticity = 0, friction = 1.0, damping = 1.0) -> pymunk.Poly:
+    def _create_agent(self, vertices: list[tuple[int, int]], mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 1.0) -> pymunk.Poly:
         """
         Create the agent
         :return: Pymunk Polygon
@@ -241,7 +238,7 @@ class Push_Empty_Env(object):
         self._draw_objects()
         self.get_state()
         
-        # pygame.display.flip()
+        pygame.display.flip()
         
         # Delay fixed time between frames
         self._clock.tick(230)
@@ -385,12 +382,8 @@ class Push_Empty_Env(object):
 
     def get_state(self):
         """
-        Gets integer pixel values from screen and bit converts them to 3 channel RGB
+        Gets integer pixel values from screen
         """
-        # self.state = np.transpose(np.array([np.right_shift(self.pxarr[:,:],16), np.right_shift(self.pxarr[:,:],8), self.pxarr[:,:]]))
-        # self.state = np.array([np.right_shift(self.pxarr[:,:],16), np.right_shift(self.pxarr[:,:],8), self.pxarr[:,:]])
-        # print(self.state.shape)
-        # self.state = np.bitwise_and(self.state, self.rgb_conv).astype('uint8')
         x,y = self._agent['robot'].position
         x_low = round(x-100) if x-100 > 0 else 0
         x_high = round(x+100) if x+100 < 600 else 600
@@ -402,11 +395,8 @@ class Push_Empty_Env(object):
         y_idx_high = y_high-y_low if y_high == 600 else 200
         y_idx_low = 200-y_high if y_low == 0 else 0
         
-        self.state = np.zeros((200,200)).astype('uint8')
-        # print(f"{x_low}:{x_high}, {y_low}:{y_high}")
-        # print(f"{x_idx_low}:{x_idx_high}, {y_idx_low}:{y_idx_high}")
+        self.state = np.zeros((1,200,200))
         self.state[x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
-        # print(self.state.shape)
 
     def get_reward(self):
         """
