@@ -62,6 +62,7 @@ class Push_Empty_Env(object):
 
         # Rewards
         self.collision_penalty = 0.25
+        self.push_reward = 0.2
         self.obj_to_goal_reward = 1
         self.partial_rewards_scale = 2
 
@@ -75,11 +76,22 @@ class Push_Empty_Env(object):
         # Collision Handling
         # Robot: 0, Obstacles: 1, Goal: 2, Object: 3
         self.collision_occuring = False
+        self.obj_coll_obst = False
+        self.is_pushing = False
         self.handler = self._space.add_collision_handler(0,1)
         self.handler.begin = self.collision_begin
         self.handler.separate = self.collision_end
-        self.goal_handler = self._space.add_collision_handler(3,2)
-        self.goal_handler.begin = self.collision_goal
+        self.obj_goal_handler = self._space.add_collision_handler(3,2)
+        self.obj_goal_handler.begin = self.collision_obj_goal
+        self.obj_obst_handler = self._space.add_collision_handler(3,1)
+        self.obj_obst_handler.begin = self.collision_obj_obst_begin
+        self.obj_obst_handler.separate = self.collision_obj_obst_end
+        self.robo_goal_handler = self._space.add_collision_handler(0,2)
+        self.robo_goal_handler.begin = self.collision_begin
+        self.robo_goal_handler.separate = self.collision_end
+        self.robo_obj_handler = self._space.add_collision_handler(0,3)
+        self.robo_obj_handler.begin = self.collision_robo_obj_begin
+        self.robo_obj_handler.end = self.collision_robo_obj_end
 
         # Execution control
         self._running = True
@@ -369,7 +381,26 @@ class Push_Empty_Env(object):
         self.collision_occuring = False
         return True
     
-    def collision_goal(self, arbiter, space, dummy):
+    def collision_obj_obst_begin(self, arbiter, space, dummy):
+        self.obj_coll_obst = True
+        return True
+    
+    def collision_obj_obst_end(self, arbiter, space, dummy):
+        self.obj_coll_obst = False
+        return True
+    
+    def collision_robo_obj_begin(self, arbiter, space, dummy):
+        self.is_pushing = True
+        if self.obj_coll_obst:
+            self._agent['wheel_1'].latch = False
+            self._agent['wheel_2'].latch = False
+        return True
+    
+    def collision_robo_obj_end(self, arbiter, space, dummy):
+        self.is_pushing = False
+        return True
+    
+    def collision_obj_goal(self, arbiter, space, dummy):
         shapes = arbiter.shapes
         self._done = True
         return True
@@ -392,7 +423,7 @@ class Push_Empty_Env(object):
         # self.state = np.zeros((1,600,600))
         # self.state[0,x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
         self.state = np.array(self.pxarr).astype('uint8').transpose()
-        self.state2 = rescale(self.state, 0.5)*255
+        self.state = rescale(self.state, 0.5)*255
 
     def get_reward(self):
         """
@@ -403,6 +434,9 @@ class Push_Empty_Env(object):
         reward = 0
         if self.collision_occuring:
             reward -= self.collision_penalty
+        
+        if self.is_pushing:
+            reward += self.push_reward
         
         if self._done:
             reward += self.obj_to_goal_reward
