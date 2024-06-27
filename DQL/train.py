@@ -243,9 +243,9 @@ class Train_DQL():
 
 def env_selector(env_num):
     if env_num == 0:
-        return Nav_Obstacle_Env
+        return Nav_Obstacle_Env()
     elif env_num == 1:
-        return Push_Empty_Env
+        return Push_Empty_Env()
     else:
         print("Bad environment selection")
         return None
@@ -323,7 +323,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         '--environment',
-        type=str,
+        type=int,
         help='environment to simulate- 0: nav_obstacle, 1: push_empty',
         default=0
     )

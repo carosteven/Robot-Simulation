@@ -24,6 +24,7 @@ def distance(pos1, pos2):
 
 class Push_Empty_Env(object):
     def __init__(self) -> None:
+        self.state_type = 'vision'
         # Space
         self._space = pymunk.Space()
         self._space.gravity = (0.0, 0.0)
@@ -124,7 +125,6 @@ class Push_Empty_Env(object):
         object_body.damping = damping
         object_body.velocity_func = custom_damping
         
-        # object = pymunk.Circle(object_body, radius)
         object = pymunk.Poly(object_body, ((-radius, -radius), (-radius, radius), (radius, radius), (radius, -radius)))
         object.label = 'object'
         object.mass = mass
@@ -250,11 +250,7 @@ class Push_Empty_Env(object):
         state = self.state
         reward = robot_reward
         done = self._done
-        robot_distance = distance(self.initial_robot_pos, self._agent['robot'].position)
-        self.initial_robot_pos = self._agent['robot'].position
-        ministeps = robot_distance / 0.25
-        info = { # To match SAM
-            'ministeps': ministeps,
+        info = {
             'inactivity': None,
             'cumulative_cubes': 0,
             'cumulative_distance': 0,
