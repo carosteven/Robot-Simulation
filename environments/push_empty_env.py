@@ -6,6 +6,7 @@ import pymunk
 import pymunk.pygame_util
 import numpy as np
 from PIL import Image
+from skimage.transform import resize, rescale
 
 def limit_velocity(body, gravity, damping, dt):
         max_velocity = 100
@@ -107,8 +108,6 @@ class Push_Empty_Env(object):
             pymunk.Poly(static_body, ((0,0), (50,0), (50,150), (0, 150))),
         ]
         
-
-
         static_goal[0].color = (0, 255, 0, 255)
         static_goal[0].collision_type = 2
         static_goal[0].filter = pymunk.ShapeFilter(categories=0b101)
@@ -137,7 +136,6 @@ class Push_Empty_Env(object):
 
         return object_body
     
-    # def _create_agent(self, vertices, mass, position, elasticity = 0, friction = 1.0, damping = 1.0) -> pymunk.Poly:
     def _create_agent(self, vertices: list[tuple[int, int]], mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 1.0) -> pymunk.Poly:
         """
         Create the agent
@@ -216,7 +214,7 @@ class Push_Empty_Env(object):
             # Calculate reward
             robot_reward = self.get_reward()
             self._agent['robot'].score += robot_reward
-            # print(self._agent['robot'].score, end='\r')
+            print(self._agent['robot'].score, end='\r')
             
             if self._done:
                 self.reset()
@@ -395,8 +393,10 @@ class Push_Empty_Env(object):
         y_idx_high = y_high-y_low if y_high == 600 else 200
         y_idx_low = 200-y_high if y_low == 0 else 0
         
-        self.state = np.zeros((1,200,200))
-        self.state[x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
+        # self.state = np.zeros((1,600,600))
+        # self.state[0,x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
+        self.state = np.array(self.pxarr).astype('uint8').transpose()
+        self.state2 = rescale(self.state, 0.5)*255
 
     def get_reward(self):
         """
@@ -430,7 +430,7 @@ class Push_Empty_Env(object):
 def main():
     game = Push_Empty_Env()
     game.run()
-    # img = Image.fromarray(game.state)
+    # img = Image.fromarray(game.state2)
     # img.show()
 
 if __name__ == "__main__":
