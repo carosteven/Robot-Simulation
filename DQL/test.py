@@ -12,9 +12,12 @@ import torch.nn.functional as F
 
 import sys
 sys.path.insert(1, './environments')
-from wheeled_robot_env import Wheeled_Robot_Sim
+from nav_obstacle_env import Nav_Obstacle_Env
+from push_empty_env import Push_Empty_Env
+import models
 
-env = Wheeled_Robot_Sim(state_type='')
+# env = Wheeled_Robot_Sim(state_type='')
+env = Push_Empty_Env()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 Transition = namedtuple('Transition',
@@ -28,26 +31,8 @@ n_observations = len(state)
 # checkpoint_path = 'model - no pushing.pt'
 checkpoint_path = 'checkpoint/checkpoint.pt'
 
-class DQN(nn.Module):
-    """
-    feed-forward nn
-    takes difference between current and previous screen patch
-    tries to predict the expected return of taking each action given current input
-    """
-    def __init__(self, n_observations, n_actions):
-        super(DQN, self).__init__()
-        self.layer1 = nn.Linear(n_observations, 128)
-        self.layer2 = nn.Linear(128, 128)
-        self.layer3 = nn.Linear(128, n_actions)
-    
-    # Called with either one element to determine next action, or a batch
-    # during optimization. Returns tensor([[left0exp,right0exp]...])
-    def forward(self, x):
-        x = F.relu(self.layer1(x))
-        x = F.relu(self.layer2(x))
-        return self.layer3(x)
 
-policy_net = DQN(n_observations, n_actions).to(device)
+policy_net = models.VisionDQN(n_observations, n_actions).to(device)
 policy_net.eval()
 
 checkpoint = torch.load(checkpoint_path)

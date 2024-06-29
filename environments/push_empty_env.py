@@ -423,7 +423,7 @@ class Push_Empty_Env(object):
         # self.state = np.zeros((1,600,600))
         # self.state[0,x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
         self.state = np.array(self.pxarr).astype('uint8').transpose()
-        self.state = rescale(self.state, 0.5)*255
+        self.state = np.resize(rescale(self.state, 0.5)*255, (1,300,300))
 
     def get_reward(self):
         """
