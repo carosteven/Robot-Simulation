@@ -4,3 +4,4 @@ venv38/
 *.pt
 *.out
 *.log
+checkpoint/
