@@ -5,3 +5,4 @@ venv38/
 *.out
 *.log
 checkpoint/
+logs/

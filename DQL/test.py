@@ -35,7 +35,7 @@ checkpoint_path = 'checkpoint/checkpoint.pt'
 policy_net = models.VisionDQN(n_observations, n_actions).to(device)
 policy_net.eval()
 
-checkpoint = torch.load(checkpoint_path)
+checkpoint = torch.load(checkpoint_path, map_location=device)
 policy_net.load_state_dict(checkpoint['policy_state_dict'])
 
 def select_action(state):
@@ -44,6 +44,7 @@ def select_action(state):
 state = env.reset()
 state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
 done = False
+print(checkpoint['epoch'])
 while not done:
     action = select_action(state)
     state, reward, done, info = env.step(env.available_actions[action])

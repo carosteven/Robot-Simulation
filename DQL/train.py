@@ -26,6 +26,10 @@ import models
 
 # env = Nav_Obstacle_Env()
 env = None
+'''
+TODO penalty for taking action
+TODO end epoch after 5000 actions if not pushed box
+'''
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
@@ -100,7 +104,7 @@ class Train_DQL():
 
     def commit_state(self):
         temp_path = os.path.join(os.path.dirname(self.checkpoint_path), "temp.pt")
-
+        print(self.epoch)
         training_state = {
             'policy_state_dict' : self.policy_net.state_dict(),
             'target_state_dict' : self.target_net.state_dict(),
@@ -197,13 +201,16 @@ class Train_DQL():
 
         # for i_epochs in tqdm(range(max_epoch)):
         while self.epoch < self.num_epoch:
+            print(self.epoch)
             # Initialize the environment and get its state
             self.state = env.reset()
             self.state = torch.tensor(self.state, dtype=torch.float32, device=self.device).unsqueeze(0)
             # print(state.shape)
-            # for t in tqdm(range(1000)):
-            for t in count():
+            # for t in count():
+            for t in tqdm(range(100000)):
                 # print(t, end='\r')
+                if env.is_pushing == True:
+                    print("\n contact")
                 action = self.select_action()
                 observation, reward, done, info = env.step(env.available_actions[action])
                 reward = torch.tensor([reward], device=self.device)
