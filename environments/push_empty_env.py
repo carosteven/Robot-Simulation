@@ -62,12 +62,13 @@ class Push_Empty_Env(object):
 
         # Rewards
         self.collision_penalty = 0.25
+        self.action_penalty = 0.1
         self.push_reward = 0.2
         self.obj_to_goal_reward = 1
         self.partial_rewards_scale = 2
 
         # Available actions
-        self.available_actions = ['w2_forward', 'w2_backward', 'w1_backward', 'w1_forward']
+        self.available_actions = ['forward', 'backward', 'turn_cw', 'turn_ccw']
 
         self.goal_position = (25,75)
         self.initial_object_dist = distance(self._object.position, self.goal_position)
@@ -290,13 +291,13 @@ class Push_Empty_Env(object):
                         self._actions('rot_ccw')
                 else:
                     if keys[pygame.K_UP]:
-                        self._actions('w2_forward')
+                        self._actions('forward')
                     elif keys[pygame.K_DOWN]:
-                        self._actions('w2_backward')
+                        self._actions('backward')
                     elif keys[pygame.K_LEFT]:
-                        self._actions('w1_backward')
+                        self._actions('turn_ccw')
                     elif keys[pygame.K_RIGHT]:
-                        self._actions('w1_forward')
+                        self._actions('turn_cw')
     
     def _update(self) -> None:
         if self._agent['wheel_1'].latch:
@@ -347,28 +348,40 @@ class Push_Empty_Env(object):
 
     def _actions(self, action) -> None:
         """
-        action: 'w2_forward', 'w2_backward', 'w1_backward', 'w1_forward', 'nothing'
+        action: 'forward', 'backward', 'turn_cw', 'turn_ccw'
         :return: None
         """
-        if action == 'w2_forward':
+        if action == 'forward':
+            self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * -50
+            self._agent['wheel_1'].latch = True
+            self._agent['wheel_1'].forward = True
             self._agent['wheel_2'].velocity += self._agent['wheel_2'].rotation_vector.perpendicular() * -50
             self._agent['wheel_2'].latch = True
             self._agent['wheel_2'].forward = True
 
-        elif action == 'w2_backward':
+        elif action == 'backward':
+            self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * 50
+            self._agent['wheel_1'].latch = True
+            self._agent['wheel_1'].forward = False
             self._agent['wheel_2'].velocity += self._agent['wheel_2'].rotation_vector.perpendicular() * 50
             self._agent['wheel_2'].latch = True
             self._agent['wheel_2'].forward = False
 
-        elif action == 'w1_backward':
-            self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * 50
-            self._agent['wheel_1'].latch = True
-            self._agent['wheel_1'].forward = False
-
-        elif action == 'w1_forward':
+        elif action == 'turn_cw':
             self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * -50
             self._agent['wheel_1'].latch = True
             self._agent['wheel_1'].forward = True
+            self._agent['wheel_2'].velocity += self._agent['wheel_2'].rotation_vector.perpendicular() * 50
+            self._agent['wheel_2'].latch = True
+            self._agent['wheel_2'].forward = False
+
+        elif action == 'turn_ccw':
+            self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * 50
+            self._agent['wheel_1'].latch = True
+            self._agent['wheel_1'].forward = False
+            self._agent['wheel_2'].velocity += self._agent['wheel_2'].rotation_vector.perpendicular() * -50
+            self._agent['wheel_2'].latch = True
+            self._agent['wheel_2'].forward = True
 
     def collision_begin(self, arbiter, space, dummy):
         shapes = arbiter.shapes
@@ -428,10 +441,13 @@ class Push_Empty_Env(object):
     def get_reward(self):
         """
         Penalty for collision with walls
+        Penalty for taking an action
         Reward for pushing object into goal
         Partial reward/penalty for pushing object closer to / further from goal
         """
         reward = 0
+        reward -= self.action_penalty
+
         if self.collision_occuring:
             reward -= self.collision_penalty
         

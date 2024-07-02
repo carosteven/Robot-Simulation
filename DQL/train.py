@@ -27,8 +27,9 @@ import models
 # env = Nav_Obstacle_Env()
 env = None
 '''
-TODO penalty for taking action
-TODO end epoch after 5000 actions if not pushed box
+TODO add more info to log
+TODO make resnet predict two actions
+TODO use multiple GPUs
 '''
 
 Transition = namedtuple('Transition',
@@ -74,6 +75,7 @@ class Train_DQL():
         self.create_or_restore_training_state(state_type)
 
         self.steps_done = 0 # for exploration
+        self.first_contact_made = False # end episode if agent does not push box after x actions
 
     def create_or_restore_training_state(self, state_type):
         if state_type == 'vision':
@@ -199,21 +201,26 @@ class Train_DQL():
         self.target_net = self.target_net.to(self.device)
         self.optimizer_to_dev()
 
-        # for i_epochs in tqdm(range(max_epoch)):
-        while self.epoch < self.num_epoch:
-            print(self.epoch)
+        # while self.epoch < self.num_epoch:
+        for self.epoch in tqdm(range(self.num_epoch)):
+            # print(self.epoch)
             # Initialize the environment and get its state
             self.state = env.reset()
             self.state = torch.tensor(self.state, dtype=torch.float32, device=self.device).unsqueeze(0)
-            # print(state.shape)
-            # for t in count():
-            for t in tqdm(range(100000)):
+            self.first_contact_made = False
+            for t in count():
+            # for t in tqdm(range(100000)):
                 # print(t, end='\r')
-                if env.is_pushing == True:
-                    print("\n contact")
                 action = self.select_action()
                 observation, reward, done, info = env.step(env.available_actions[action])
                 reward = torch.tensor([reward], device=self.device)
+
+                if env.is_pushing:
+                    self.first_contact_made = True
+
+                if t > 5000 and not self.first_contact_made:
+                    done = True
+                    logging.info("No contact made. Resetting environment...")
 
                 if done:
                     next_state = None
@@ -227,7 +234,7 @@ class Train_DQL():
                 self.state = next_state
 
                 # Perform one step of the optimization (on the policy network)
-                if len(self.memory) >= BATCH_SIZE:
+                if len(self.memory) >= BATCH_SIZE*5:
                     self.optimize_model()
 
                 # Soft update of the target network's weights
@@ -246,8 +253,8 @@ class Train_DQL():
                     self.episode_durations.append(t+1)
                     self.plot_durations()
                     break
-            print()
-            self.epoch += 1
+            # print()
+            # self.epoch += 1
 
 def env_selector(env_num):
     if env_num == 0:
