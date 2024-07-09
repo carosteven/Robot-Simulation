@@ -14,17 +14,14 @@ import torch.optim as optim
 import torch.nn.functional as F
 from tqdm import tqdm
 
-import os, sys
-sys.path.insert(1, './environments')
+import os
 
 import logging
 logging.getLogger('pymunk').propagate = False
 
-from nav_obstacle_env import Nav_Obstacle_Env
-from push_empty_env import Push_Empty_Env
+import environments
 import models
 
-# env = Nav_Obstacle_Env()
 env = None
 '''
 TODO add more info to log
@@ -259,15 +256,6 @@ class Train_DQL():
             # print()
             self.epoch += 1
 
-def env_selector(env_num):
-    if env_num == 0:
-        return Nav_Obstacle_Env()
-    elif env_num == 1:
-        return Push_Empty_Env()
-    else:
-        print("Bad environment selection")
-        return None
-
 def main(args):
     global BATCH_SIZE, env
     if args.log_file is not None:
@@ -275,7 +263,7 @@ def main(args):
     
     logging.info("starting training script")
 
-    env = env_selector(args.environment)
+    env = environments.selector(args.environment)
     env.state_type = args.state_type
     
     BATCH_SIZE = args.batch_size
@@ -342,7 +330,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--environment',
         type=int,
-        help='environment to simulate- 0: nav_obstacle, 1: push_empty',
+        help='environment to simulate- 0: nav_obstacle, 1: push_empty, 2: push_empty_small',
         default=0
     )
 

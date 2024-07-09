@@ -22,7 +22,7 @@ def custom_damping(body, gravity, damping, dt):
 def distance(pos1, pos2):
     return abs(pos1 - pos2)
 
-class Push_Empty_Env(object):
+class Push_Empty_Small_Env(object):
     def __init__(self) -> None:
         self.state_type = 'vision'
         # Space

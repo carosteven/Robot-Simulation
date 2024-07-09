@@ -10,14 +10,10 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-import sys
-sys.path.insert(1, './environments')
-from nav_obstacle_env import Nav_Obstacle_Env
-from push_empty_env import Push_Empty_Env
+import environments
 import models
 
-# env = Wheeled_Robot_Sim(state_type='')
-env = Push_Empty_Env()
+env = environments.selector(1)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 Transition = namedtuple('Transition',
