@@ -202,15 +202,16 @@ class Train_DQL():
         self.optimizer_to_dev()
 
         # while self.epoch < self.num_epoch:
-        for self.epoch in tqdm(range(self.num_epoch)):
+        self.num_epoch -= self.epoch
+        for epoch in tqdm(range(self.num_epoch)):
             # print(self.epoch)
             # Initialize the environment and get its state
             self.state = env.reset()
             self.state = torch.tensor(self.state, dtype=torch.float32, device=self.device).unsqueeze(0)
             self.first_contact_made = False
+            logging.info(f'Epoch {self.epoch}')
             for t in count():
             # for t in tqdm(range(100000)):
-                # print(t, end='\r')
                 action = self.select_action()
                 observation, reward, done, info = env.step(env.available_actions[action])
                 reward = torch.tensor([reward], device=self.device)
@@ -252,9 +253,11 @@ class Train_DQL():
                 if done:
                     self.episode_durations.append(t+1)
                     self.plot_durations()
+                    if self.first_contact_made:
+                        logging.info("Object in receptacle. Resetting environment...")
                     break
             # print()
-            # self.epoch += 1
+            self.epoch += 1
 
 def env_selector(env_num):
     if env_num == 0:
