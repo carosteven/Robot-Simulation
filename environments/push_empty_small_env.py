@@ -38,8 +38,8 @@ class Push_Empty_Env(object):
         # pygame
         pygame.display.init()
         pygame.font.init()
-        screen_size = (600,600)
-        self._screen = pygame.display.set_mode(screen_size)
+        self.screen_size = (300,300)
+        self._screen = pygame.display.set_mode(self.screen_size)
         self._clock = pygame.time.Clock()
 
         self._draw_options = pymunk.pygame_util.DrawOptions(self._screen)
@@ -49,15 +49,15 @@ class Push_Empty_Env(object):
         self._add_static_scenery()
         
         # The object to be pushed
-        self._object = self._create_object(radius=10, mass=5, position=(300,300), damping=.99)
+        self._object = self._create_object(radius=15, mass=5, position=tuple([c/2 for c in self.screen_size]), damping=.99)
 
         # The agent to be controlled
-        y_pos = random.randint(50,550)
-        self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(450, y_pos), damping=0.99)
+        y_pos = random.randint(50,self.screen_size[1]-50)
+        self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(self.screen_size[0]*0.75, y_pos), damping=0.99)
         for key in self._agent:
             self._agent[key].score = 0
 
-        self.state = np.zeros((1, screen_size[0], screen_size[1])).astype(int)
+        self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
 
         # Rewards
@@ -72,7 +72,6 @@ class Push_Empty_Env(object):
 
         self.goal_position = (25,75)
         self.initial_object_dist = distance(self._object.position, self.goal_position)
-        self.initial_robot_pos = (450,500)
 
         # Collision Handling
         # Robot: 0, Obstacles: 1, Goal: 2, Object: 3
@@ -106,10 +105,10 @@ class Push_Empty_Env(object):
         static_body = self._space.static_body
 
         static_border = [
-            pymunk.Segment(static_body, (0,0), (0,600), 1),
-            pymunk.Segment(static_body, (0,0), (600,0), 1),
-            pymunk.Segment(static_body, (599,0), (599,599), 1),
-            pymunk.Segment(static_body, (0,599), (599,599), 1),
+            pymunk.Segment(static_body, (0,0), (0,self.screen_size[1]), 1),
+            pymunk.Segment(static_body, (0,0), (self.screen_size[0],0), 1),
+            pymunk.Segment(static_body, (self.screen_size[0]-1,0), (self.screen_size[0]-1,self.screen_size[1]-1), 1),
+            pymunk.Segment(static_body, (0,self.screen_size[1]-1), (self.screen_size[0]-1,self.screen_size[1]-1), 1),
         ]
         for line in static_border:
             line.elasticity = 0.95
@@ -436,7 +435,7 @@ class Push_Empty_Env(object):
         # self.state = np.zeros((1,600,600))
         # self.state[0,x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
         self.state = np.array(self.pxarr).astype('uint8').transpose()
-        self.state = np.resize(rescale(self.state, 0.5)*255, (1,300,300))
+        self.state = np.resize(rescale(self.state, 0.5)*255, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
 
     def get_reward(self):
         """
