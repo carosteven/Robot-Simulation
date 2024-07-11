@@ -61,11 +61,11 @@ class Push_Empty_Small_Env(object):
         self.get_state()
 
         # Rewards
-        self.collision_penalty = 0.25
-        self.action_penalty = 0.1
-        self.push_reward = 0.2
-        self.obj_to_goal_reward = 1
-        self.partial_rewards_scale = 2
+        self.collision_penalty = 25
+        self.action_penalty = 10
+        self.push_reward = 30
+        self.obj_to_goal_reward = 1000
+        self.partial_rewards_scale = 10
 
         # Available actions
         self.available_actions = ['forward', 'backward', 'turn_cw', 'turn_ccw']
@@ -473,7 +473,7 @@ class Push_Empty_Small_Env(object):
         self._running = False
 
 def main():
-    game = Push_Empty_Env()
+    game = Push_Empty_Small_Env()
     game.run()
     # img = Image.fromarray(game.state2)
     # img.show()
