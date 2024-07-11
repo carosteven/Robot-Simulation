@@ -62,7 +62,7 @@ class Push_Empty_Small_Env(object):
 
         # Rewards
         self.collision_penalty = 25
-        self.action_penalty = 10
+        self.action_penalty = 1
         self.push_reward = 30
         self.obj_to_goal_reward = 1000
         self.partial_rewards_scale = 10
@@ -91,7 +91,7 @@ class Push_Empty_Small_Env(object):
         self.robo_goal_handler.separate = self.collision_end
         self.robo_obj_handler = self._space.add_collision_handler(0,3)
         self.robo_obj_handler.begin = self.collision_robo_obj_begin
-        self.robo_obj_handler.end = self.collision_robo_obj_end
+        self.robo_obj_handler.separate = self.collision_robo_obj_end
 
         # Execution control
         self._running = True

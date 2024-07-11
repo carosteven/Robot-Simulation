@@ -92,7 +92,7 @@ class Push_Empty_Env(object):
         self.robo_goal_handler.separate = self.collision_end
         self.robo_obj_handler = self._space.add_collision_handler(0,3)
         self.robo_obj_handler.begin = self.collision_robo_obj_begin
-        self.robo_obj_handler.end = self.collision_robo_obj_end
+        self.robo_obj_handler.separate = self.collision_robo_obj_end
 
         # Execution control
         self._running = True
