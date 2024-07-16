@@ -52,14 +52,16 @@ class Train_DQL():
         # Get number of actions from env
         self.n_actions = len(env.available_actions)
 
+        self.action_freq = 10
+
 
         # Global variables
         self.BATCH_SIZE = batch_size     # How many examples to sample per train step
         self.GAMMA = 0.99            # Discount factor in episodic reward objective
         self.LEARNING_RATE = 5e-4    # Learning rate for Adam optimizer
-        self.TARGET_UPDATE_FREQ = 200   # Target network update frequency
+        self.TARGET_UPDATE_FREQ = 20   # Target network update frequency
         self.STARTING_EPSILON = 0.8 #1.0  # Starting epsilon
-        self.STEPS_MAX = 100000       # Gradually reduce epsilon over these many steps
+        self.STEPS_MAX = 10000       # Gradually reduce epsilon over these many steps
         self.EPSILON_END = 0.1 #0.01      # At the end, keep epsilon at this value
 
         self.EPSILON = self.STARTING_EPSILON
@@ -97,20 +99,21 @@ class Train_DQL():
             self.memory.memory = training_state['memory']
             self.epoch = training_state['epoch']
             self.loss = training_state['loss']
+            self.EPSILON = training_state['epsilon']
             logging.info(f"Training state restored at epoch {self.epoch}")
         else:
             logging.info("No checkpoint detected, starting from initial state")
 
     def commit_state(self):
         temp_path = os.path.join(os.path.dirname(self.checkpoint_path), "temp.pt")
-        print(self.epoch)
         training_state = {
             'policy_state_dict' : self.policy_net.state_dict(),
             'target_state_dict' : self.target_net.state_dict(),
             'optimizer_state_dict' : self.optimizer.state_dict(),
             'memory' : self.memory.memory,
             'epoch' : self.epoch,
-            'loss' : self.loss, 
+            'loss' : self.loss,
+            'epsilon' : self.EPSILON
         }
 
         # first save the temp file
@@ -215,37 +218,44 @@ class Train_DQL():
             logging.info(f'Epoch {self.epoch}')
 
             # actions = []
-            # for epi in tqdm(range(10000)):
-            for epi in count():
-                # Play an episode and log episodic reward
-                action = self.policy()
-                observation, reward, done, info = env.step(env.available_actions[action])
-                reward = torch.tensor([reward], device=self.device)
-                # actions.append(action.item())
-
+            epi = 0
+            # for frame in tqdm(range(100000)):
+            for frame in count():
                 if env.is_pushing:
                     self.first_contact_made = True
 
-                if epi > 20000 and not self.first_contact_made:
+                if epi > 2000 and not self.first_contact_made:
                     done = True
                     logging.info("No contact made. Resetting environment...")
                     # action_path = os.path.join(os.path.dirname(self.checkpoint_path), "actions.pt")
                     # torch.save(actions, action_path)
 
-                if done:
-                    next_state = None
-                else:
-                    next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
                 
-                # Store the transition in memory
-                self.memory.push(self.state, action, next_state, reward)
+                if frame % self.action_freq == 0:
+                    # Play an episode and log episodic reward
+                    action = self.policy()
+                    observation, reward, done, info = env.step(env.available_actions[action])
+                    reward = torch.tensor([reward], device=self.device)
+                    # actions.append(action.item())
+                    if done:
+                        next_state = None
+                    else:
+                        next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
 
-                self.state = next_state
+                    # Store the transition in memory
+                    self.memory.push(self.state, action, next_state, reward)
+
+                    self.state = next_state
                 
-                # Train after collecting sufficient experience
-                if len(self.memory) >= self.BATCH_SIZE*5:
-                    self.update_networks(epi)
+                    # Train after collecting sufficient experience
+                    if len(self.memory) >= self.BATCH_SIZE*5:
+                        self.update_networks(epi)
+
+                    epi += 1
                 
+                else:
+                    env.step(None)
+
                 cur_time = time.time()
                 if cur_time - start_time > self.checkpoint_interval:
                     self.commit_state()
@@ -305,7 +315,7 @@ if __name__ == "__main__":
         '--checkpoint_path',
         type=str,
         help='path to save and look for the checkpoint file',
-        default=os.path.join(os.getcwd(), "checkpoint.pt")
+        default=os.path.join(os.getcwd(), "checkpoint/checkpoint.pt")
     )
 
     parser.add_argument(

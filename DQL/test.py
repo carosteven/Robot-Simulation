@@ -21,6 +21,7 @@ Transition = namedtuple('Transition',
 
 # Get number of actions from env
 n_actions = len(env.available_actions)
+action_freq = 10
 # Get numbaer of state observations
 state = env.reset()
 n_observations = len(state)
@@ -41,13 +42,18 @@ state = env.reset()
 state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
 done = False
 # print(checkpoint['epoch'])
+frame = 0
 while not done:
-    action = select_action(state)
-    state, reward, done, info = env.step(env.available_actions[action])
-    state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-    print(action, end='\r')
+    if frame % action_freq == 0:
+        action = select_action(state)
+        state, reward, done, info = env.step(env.available_actions[action])
+        state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+        print(action, end='\r')
+    else:
+        env.step(None)
+        
     if done:
         state = env.reset()
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
         done = False
-print(reward)
+    frame += 1
