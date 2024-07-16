@@ -25,24 +25,28 @@ n_actions = len(env.available_actions)
 state = env.reset()
 n_observations = len(state)
 # checkpoint_path = 'model - no pushing.pt'
-checkpoint_path = 'model_push.pt'
+action_path = 'actions.pt'
 
 
-policy_net = models.VisionDQN(n_observations, n_actions).to(device)
-policy_net.eval()
+# policy_net = models.VisionDQN(n_observations, n_actions).to(device)
+# policy_net.eval()
 
-checkpoint = torch.load(checkpoint_path, map_location=device)
-policy_net.load_state_dict(checkpoint)
+# checkpoint = torch.load(action_path, map_location=device)
+actions = torch.load(action_path, map_location=device)
+print(actions[0])
+input
+# policy_net.load_state_dict(checkpoint)
 
-def select_action(state):
-    return policy_net(state).max(1).indices.view(1,1)
+# def select_action(state):
+    # return policy_net(state).max(1).indices.view(1,1)
 
 state = env.reset()
 state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
 done = False
 # print(checkpoint['epoch'])
 while not done:
-    action = select_action(state)
+    action = actions[0]
+    actions.pop(0)
     state, reward, done, info = env.step(env.available_actions[action])
     state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
     print(action, end='\r')

@@ -58,9 +58,9 @@ class Train_DQL():
         self.GAMMA = 0.99            # Discount factor in episodic reward objective
         self.LEARNING_RATE = 5e-4    # Learning rate for Adam optimizer
         self.TARGET_UPDATE_FREQ = 200   # Target network update frequency
-        self.STARTING_EPSILON = 1.0  # Starting epsilon
+        self.STARTING_EPSILON = 0.8 #1.0  # Starting epsilon
         self.STEPS_MAX = 100000       # Gradually reduce epsilon over these many steps
-        self.EPSILON_END = 0.01      # At the end, keep epsilon at this value
+        self.EPSILON_END = 0.1 #0.01      # At the end, keep epsilon at this value
 
         self.EPSILON = self.STARTING_EPSILON
 
@@ -83,7 +83,7 @@ class Train_DQL():
             self.target_net = models.SensorDQN(self.n_observations, self.n_actions)
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.LEARNING_RATE)
+        # self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.LEARNING_RATE)
         self.optimizer = optim.SGD(self.policy_net.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0001)
         self.memory = ReplayMemory(10000)
         self.epoch = 0
@@ -150,28 +150,37 @@ class Train_DQL():
         # Each variable is a vector of corresponding values
         transitions = self.memory.sample(self.BATCH_SIZE)
         batch = Transition(*zip(*transitions))
+
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                                batch.next_state)), device=self.device, dtype=torch.bool)
+        non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
+
         state_batch = torch.cat(batch.state)
         action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
-        next_state_batch = torch.cat(batch.next_state)
         
         # Get Q(s, a) for every (s, a) in the minibatch
         qvalues = self.policy_net(state_batch).gather(1, action_batch.view(-1, 1)).squeeze()
 
         # Get max_a' Qt(s', a') for every (s') in the minibatch
-        q2values = torch.max(self.target_net(next_state_batch), dim = 1).values
+        q2values = torch.zeros(self.BATCH_SIZE, device=self.device)
+        with torch.no_grad():
+            q2values[non_final_mask] = torch.max(self.target_net(non_final_next_states), dim = 1).values
 
+        # q2value is zero when the state is final ^^
+        targets = reward_batch + self.GAMMA * q2values
+        '''
         # If done, 
         #   y = r(s, a) + GAMMA * max_a' Q(s', a') * (0)
         # If not done,
         #   y = r(s, a) + GAMMA * max_a' Q(s', a') * (1)       
         targets = reward_batch + self.GAMMA * q2values * (1-env._done)
-
+        '''
         # Detach y since it is the target. Target values should
         # be kept fixed.
         loss = torch.nn.SmoothL1Loss()(targets.detach(), qvalues)
         # print(qvalues[0], targets[0], end='\r')
-        print(f'{loss}    {epi}    ', end='\r')
+        # print(f'{loss}    {epi}    ', end='\r')
 
         # Backpropagation
         self.optimizer.zero_grad()
@@ -202,13 +211,26 @@ class Train_DQL():
         for epoch in tqdm(range(self.num_epoch)):
             self.state = env.reset()
             self.state = torch.tensor(self.state, dtype=torch.float32, device=self.device).unsqueeze(0)
+            self.first_contact_made = False
             logging.info(f'Epoch {self.epoch}')
+
+            # actions = []
             # for epi in tqdm(range(10000)):
             for epi in count():
                 # Play an episode and log episodic reward
                 action = self.policy()
                 observation, reward, done, info = env.step(env.available_actions[action])
                 reward = torch.tensor([reward], device=self.device)
+                # actions.append(action.item())
+
+                if env.is_pushing:
+                    self.first_contact_made = True
+
+                if epi > 20000 and not self.first_contact_made:
+                    done = True
+                    logging.info("No contact made. Resetting environment...")
+                    # action_path = os.path.join(os.path.dirname(self.checkpoint_path), "actions.pt")
+                    # torch.save(actions, action_path)
 
                 if done:
                     next_state = None
@@ -230,7 +252,8 @@ class Train_DQL():
                     start_time = cur_time
                 
                 if done:
-                    logging.info("Object in receptacle. Resetting environment...")
+                    if self.first_contact_made:
+                        logging.info("Object in receptacle. Resetting environment...")
                     break
 
             self.epoch += 1

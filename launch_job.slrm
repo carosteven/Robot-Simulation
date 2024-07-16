@@ -5,7 +5,8 @@
 #SBATCH --gres=gpu:rtx6000:1
 #SBATCH -c 4
 #SBATCH --qos=normal
-#SBATCH --time=12:00:00
+#SBATCH --time=3:30:00
+#SBATCH --output=logs/slurm-%j.out
 #SBATCH --mail-user=steven.caro@uwaterloo.ca
 #SBATCH --mail-type=ALL
 
@@ -14,7 +15,7 @@
 
 echo `date`: Job $SLURM_JOB_ID is allocated resource
 
-# the recommendation is to keep erything that defines the workload itself in a separate script
+# the recommendation is to keep everything that defines the workload itself in a separate script
 bash run_train_pascal.sh
 
 echo `date`: "Job $SLURM_JOB_ID finished running, exit code: $?"
