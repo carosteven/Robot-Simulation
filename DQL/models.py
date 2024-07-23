@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-from networks import resnet18
+from networks import resnet18, densenet121
 
 class SensorDQN(nn.Module):
     """
@@ -28,3 +28,11 @@ class VisionDQN(nn.Module):
     
     def forward(self, x):
         return self.resnet18(x)
+    
+class VisionDQN_dense(nn.Module):
+    def __init__(self, n_channels, n_actions):
+        super(VisionDQN_dense, self).__init__()
+        self.densenet121 = densenet121(num_input_channels=n_channels, num_classes = n_actions, growth_rate=8)
+
+    def forward(self, x):
+        return self.densenet121(x)

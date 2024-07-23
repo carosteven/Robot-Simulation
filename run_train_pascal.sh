@@ -33,4 +33,4 @@ module purge && module load pytorch2.1-cuda11.8-python3.9
 # file for more information.
 source venv/bin/activate
 # python DQL/train.py --state_type vision --num_epoch 50 --checkpoint_path /checkpoint/${USER}/checkpoint.pt --checkpoint_interval 3600 --log_file  $PWD/train.log --batch_size 64 --environment 1
-python DQL/train.py --state_type vision --num_epoch 50 --checkpoint_path $PWD/checkpoint/checkpoint.pt --checkpoint_interval 3600 --log_file  $PWD/train.log --batch_size 64 --environment 2
+python DQL/train_pascal.py --state_type vision --num_epoch 50 --checkpoint_path $PWD/checkpoint/checkpoint_dense.pt --checkpoint_interval 3000 --log_file  $PWD/train_dense.log --batch_size 128 --environment 2
