@@ -355,8 +355,8 @@ if __name__ == "__main__":
     parser.add_argument(
         '--environment',
         type=int,
-        help='environment to simulate- 0: nav_obstacle, 1: push_empty, 2: push_empty_small',
-        default=2
+        help='environment to simulate- 0: nav_obstacle, 1: push_empty, 2: push_empty_small, 3: nav_empty_small',
+        default=3
     )
 
     main(parser.parse_args())
