@@ -52,7 +52,8 @@ class Train_DQL():
         # Get number of actions from env
         self.n_actions = len(env.available_actions)
 
-        self.action_freq = 10
+        self.action_freq = 25
+        # self.action_freq = 1
 
 
         # Global variables
@@ -60,8 +61,8 @@ class Train_DQL():
         self.GAMMA = 0.99            # Discount factor in episodic reward objective
         self.LEARNING_RATE = 5e-4    # Learning rate for Adam optimizer
         self.TARGET_UPDATE_FREQ = 20   # Target network update frequency
-        self.STARTING_EPSILON = 0.8 #1.0  # Starting epsilon
-        self.STEPS_MAX = 10000       # Gradually reduce epsilon over these many steps
+        self.STARTING_EPSILON = 1.0  # Starting epsilon
+        self.STEPS_MAX = 500000       # Gradually reduce epsilon over these many steps
         self.EPSILON_END = 0.1 #0.01      # At the end, keep epsilon at this value
 
         self.EPSILON = self.STARTING_EPSILON
@@ -75,10 +76,14 @@ class Train_DQL():
         self.steps_done = 0 # for exploration
         self.first_contact_made = False # end episode if agent does not push box after x actions
 
-    def create_or_restore_training_state(self, state_type):
+    def create_or_restore_training_state(self, state_type, model):
         if state_type == 'vision':
-            self.policy_net = models.VisionDQN(self.n_observations, self.n_actions)
-            self.target_net = models.VisionDQN(self.n_observations, self.n_actions)
+            if model == 'resnet':
+                self.policy_net = models.VisionDQN(self.n_observations, self.n_actions)
+                self.target_net = models.VisionDQN(self.n_observations, self.n_actions)
+            elif model == 'densenet':
+                self.policy_net = models.VisionDQN_dense(self.n_observations, self.n_actions)
+                self.target_net = models.VisionDQN_dense(self.n_observations, self.n_actions)
             
         else:    
             self.policy_net = models.SensorDQN(self.n_observations, self.n_actions)
@@ -143,6 +148,8 @@ class Train_DQL():
         # Epsilon update rule: Keep reducing a small amount over
         # STEPS_MAX number of steps, and at the end, fix to EPSILON_END
         self.EPSILON = max(self.EPSILON_END, self.EPSILON - (1.0 / self.STEPS_MAX))
+        if self.EPSILON == self.EPSILON_END:
+            logging.info("Reached min epsilon")
         # print(EPSILON)
 
         return action
@@ -204,7 +211,6 @@ class Train_DQL():
 
     def train(self):
         # epsilon greedy exploration
-        self.EPSILON = self.STARTING_EPSILON
 
         start_time = time.time()
         self.policy_net = self.policy_net.to(self.device)
@@ -280,7 +286,7 @@ def main(args):
     env.state_type = args.state_type
     
 
-    train = Train_DQL(args.state_type, args.checkpoint_path, args.checkpoint_interval, args.num_epoch, args.batch_size)
+    train = Train_DQL(args.state_type, args.model, args.checkpoint_path, args.checkpoint_interval, args.num_epoch, args.batch_size)
     
     # check if the checkpoint exists and try to resume from the last checkpoint
     # if you are saving for every epoch, you can skip the part about
@@ -302,6 +308,13 @@ if __name__ == "__main__":
         type=str,
         help='options: ["vision", "sensor"]',
         default= 'vision'
+    )
+
+    parser.add_argument(
+        '--model',
+        type=str,
+        help='options: ["resnet", "densenet"]',
+        default='resnet'
     )
 
     parser.add_argument(
