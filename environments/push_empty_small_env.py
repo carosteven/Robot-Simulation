@@ -63,12 +63,12 @@ class Push_Empty_Small_Env(object):
         self.reward_from_last_action = 0
 
         # Rewards
-        self.collision_penalty = 50
+        self.collision_penalty = 10
         self.action_penalty = 1
-        self.push_reward = 10
+        self.push_reward = 1
         self.obj_to_goal_reward = 1000
         self.exploration_reward = 0.1
-        self.partial_rewards_scale = 10
+        self.partial_rewards_scale = 1
 
         # Available actions
         self.available_actions = ['forward', 'backward', 'turn_cw', 'turn_ccw']
@@ -215,7 +215,8 @@ class Push_Empty_Small_Env(object):
             for x in range(self._physics_steps_per_frame):
                 self._space.step(self._dt)
 
-            self._process_events()
+            action = self._process_events()
+            self._actions(action)
             self._update()
             self._clear_screen()
             self._draw_objects()
@@ -226,10 +227,18 @@ class Push_Empty_Small_Env(object):
             self._clock.tick(110)
             pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
 
+            if action is not None:
+                self.reward += self.reward_from_last_action
+                self.reward_from_last_action = 0
+
             # Calculate reward
-            robot_reward = self.get_reward()
-            self.reward += robot_reward
-            print(self.reward, end='\r')
+            self.reward_from_last_action += self.get_reward(True if action is not None else False)
+            # self.reward = self.get_reward(True if action is not None else False)
+
+            # Calculate reward
+            # robot_reward = self.get_reward()
+            # self.reward += robot_reward
+            print(f'{self.reward} \t\t\t\t {self.reward_from_last_action}', end='\r')
             
             if self._done:
                 self.reset()
@@ -277,11 +286,12 @@ class Push_Empty_Small_Env(object):
 
         return state, reward, done, info
     
-    def _process_events(self) -> None:
+    def _process_events(self) -> str:
         """
         Handle game and events like keyboard input. Call once per frame only.
         :return: None
         """
+        action = None
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self._running = False
@@ -297,13 +307,18 @@ class Push_Empty_Small_Env(object):
                         self._actions('rot_ccw')
                 else:
                     if keys[pygame.K_UP]:
-                        self._actions('forward')
+                        # self._actions('forward')
+                        action = 'forward'
                     elif keys[pygame.K_DOWN]:
-                        self._actions('backward')
+                        # self._actions('backward')
+                        action = 'backward'
                     elif keys[pygame.K_LEFT]:
-                        self._actions('turn_ccw')
+                        # self._actions('turn_ccw')
+                        action = 'turn_ccw'
                     elif keys[pygame.K_RIGHT]:
-                        self._actions('turn_cw')
+                        # self._actions('turn_cw')
+                        action = 'turn_cw'
+        return action
     
     def _update(self) -> None:
         if self._agent['wheel_1'].latch:
@@ -468,7 +483,7 @@ class Push_Empty_Small_Env(object):
         if self._done:
             reward += self.obj_to_goal_reward
         
-        if not self.is_pushing and not self.collision_occuring:
+        if not self.is_pushing and not self.collision_occuring and action_taken:
             reward += self.exploration_reward # Small reward for diverse actions
             reward_tracker += ":exploration:"
         # print(reward_tracker, self.reward_from_last_action)

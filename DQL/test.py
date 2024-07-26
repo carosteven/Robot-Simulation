@@ -36,7 +36,10 @@ checkpoint = torch.load(checkpoint_path, map_location=device)
 policy_net.load_state_dict(checkpoint)
 
 def select_action(state):
-    return policy_net(state).max(1).indices.view(1,1)
+    # return policy_net(state).max(1).indices.view(1,1)
+    qvalues = policy_net(state)
+    action = torch.argmax(qvalues).item()
+    return torch.tensor([[action]], device=device, dtype=torch.long)
 
 state = env.reset()
 state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
@@ -48,7 +51,8 @@ while not done:
         action = select_action(state)
         state, reward, done, info = env.step(env.available_actions[action])
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-        print(action, end='\r')
+        # print(action, end='\r')
+        print(f'{env.reward} ', end='\t')
     else:
         env.step(None)
         
