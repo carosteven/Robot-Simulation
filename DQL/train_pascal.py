@@ -44,11 +44,12 @@ class ReplayMemory(object):
         return len(self.memory)
 
 class Train_DQL():
-    def __init__(self, state_type, model, checkpoint_path, checkpoint_interval, num_epoch, batch_size=128):
+    def __init__(self, state_type, model, train_type, checkpoint_path, checkpoint_interval, num_epoch, batch_size=128):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.checkpoint_path = checkpoint_path
         self.checkpoint_interval = checkpoint_interval
         self.num_epoch = num_epoch
+        self.train_type = train_type
         # Get number of actions from env
         self.n_actions = len(env.available_actions)
 
@@ -60,7 +61,7 @@ class Train_DQL():
         self.BATCH_SIZE = batch_size     # How many examples to sample per train step
         self.GAMMA = 0.99            # Discount factor in episodic reward objective
         self.LEARNING_RATE = 5e-4    # Learning rate for Adam optimizer
-        self.TARGET_UPDATE_FREQ = 20   # Target network update frequency
+        self.TARGET_UPDATE_FREQ = 50   # Target network update frequency
         self.STARTING_EPSILON = 1.0  # Starting epsilon
         self.STEPS_MAX = 50000       # Gradually reduce epsilon over these many steps
         self.EPSILON_END = 0.01      # At the end, keep epsilon at this value
@@ -69,7 +70,7 @@ class Train_DQL():
 
         # Get number of state observations
         self.state = env.reset() # state, info = env.reset()
-        self.n_observations = len(self.state)
+        self.n_observations = self.state.shape[0]
         
         self.create_or_restore_training_state(state_type, model)
 
@@ -229,14 +230,15 @@ class Train_DQL():
             epi = 0
             # for frame in tqdm(range(100000)):
             for frame in count():
-                if env.is_pushing:
-                    self.first_contact_made = True
+                if self.train_type == 0:
+                    if env.is_pushing:
+                        self.first_contact_made = True
 
-                if epi > 2000 and not self.first_contact_made:
-                    done = True
-                    logging.info("No contact made. Resetting environment...")
-                    # action_path = os.path.join(os.path.dirname(self.checkpoint_path), "actions.pt")
-                    # torch.save(actions, action_path)
+                    if epi > 2000 and not self.first_contact_made:
+                        done = True
+                        logging.info("No contact made. Resetting environment...")
+                        # action_path = os.path.join(os.path.dirname(self.checkpoint_path), "actions.pt")
+                        # torch.save(actions, action_path)
 
                 
                 if frame % self.action_freq == 0:
@@ -270,8 +272,10 @@ class Train_DQL():
                     start_time = cur_time
                 
                 if done:
-                    if self.first_contact_made:
+                    if self.first_contact_made and self.train_type == 0:
                         logging.info("Object in receptacle. Resetting environment...")
+                    elif self.train_type == 1:
+                        logging.info("Made it to goal. Resetting environment...")
                     break
 
             self.epoch += 1
@@ -283,12 +287,12 @@ def main(args):
         logging.basicConfig(filename=args.log_file,level=logging.DEBUG)
     
     logging.info("starting training script")
-
+    
     env = environments.selector(args.environment)
     env.state_type = args.state_type
     
 
-    train = Train_DQL(args.state_type, args.model, args.checkpoint_path, args.checkpoint_interval, args.num_epoch, args.batch_size)
+    train = Train_DQL(args.state_type, args.model, args.train_type, args.checkpoint_path, args.checkpoint_interval, args.num_epoch, args.batch_size)
     
     # check if the checkpoint exists and try to resume from the last checkpoint
     # if you are saving for every epoch, you can skip the part about
@@ -317,6 +321,13 @@ if __name__ == "__main__":
         type=str,
         help='options: ["resnet", "densenet"]',
         default='resnet'
+    )
+
+    parser.add_argument(
+        '--train-type',
+        type=int,
+        help='options- 0: push, 1: nav',
+        default=1
     )
 
     parser.add_argument(
