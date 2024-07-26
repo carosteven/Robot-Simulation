@@ -60,10 +60,10 @@ class Train_DQL():
         self.BATCH_SIZE = batch_size     # How many examples to sample per train step
         self.GAMMA = 0.99            # Discount factor in episodic reward objective
         self.LEARNING_RATE = 5e-4    # Learning rate for Adam optimizer
-        self.TARGET_UPDATE_FREQ = 20   # Target network update frequency
+        self.TARGET_UPDATE_FREQ = 10   # Target network update frequency
         self.STARTING_EPSILON = 1.0  # Starting epsilon
-        self.STEPS_MAX = 500000       # Gradually reduce epsilon over these many steps
-        self.EPSILON_END = 0.1 #0.01      # At the end, keep epsilon at this value
+        self.STEPS_MAX = 100000       # Gradually reduce epsilon over these many steps
+        self.EPSILON_END = 0.01      # At the end, keep epsilon at this value
 
         self.EPSILON = self.STARTING_EPSILON
 
@@ -91,8 +91,9 @@ class Train_DQL():
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
         # self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.LEARNING_RATE)
-        self.optimizer = optim.SGD(self.policy_net.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0001)
-        self.memory = ReplayMemory(10000)
+        # self.optimizer = optim.SGD(self.policy_net.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0001)
+        self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=self.LEARNING_RATE, weight_decay=0.01)
+        self.memory = ReplayMemory(50000)
         self.epoch = 0
         self.loss = 0
 
