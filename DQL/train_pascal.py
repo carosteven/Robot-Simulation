@@ -44,7 +44,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 class Train_DQL():
-    def __init__(self, state_type, checkpoint_path, checkpoint_interval, num_epoch, batch_size=128):
+    def __init__(self, state_type, model, checkpoint_path, checkpoint_interval, num_epoch, batch_size=128):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.checkpoint_path = checkpoint_path
         self.checkpoint_interval = checkpoint_interval
@@ -70,8 +70,10 @@ class Train_DQL():
         # Get number of state observations
         self.state = env.reset() # state, info = env.reset()
         self.n_observations = len(self.state)
+        self.next_state = None
+        self.action = None
         
-        self.create_or_restore_training_state(state_type)
+        self.create_or_restore_training_state(state_type, model)
 
         self.steps_done = 0 # for exploration
         self.first_contact_made = False # end episode if agent does not push box after x actions
@@ -240,26 +242,28 @@ class Train_DQL():
                 
                 if frame % self.action_freq == 0:
                     # Play an episode and log episodic reward
-                    action = self.policy()
-                    observation, reward, done, info = env.step(env.available_actions[action])
-                    reward = torch.tensor([reward], device=self.device)
+                    self.action = self.policy()
+                    observation, _, done, _ = env.step(env.available_actions[self.action])
                     # actions.append(action.item())
                     if done:
-                        next_state = None
+                        self.next_state = None
                     else:
-                        next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+                        self.next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
 
-                    # Store the transition in memory
-                    self.memory.push(self.state, action, next_state, reward)
+                    epi += 1
+                
+                elif frame % self.action_freq == self.action_freq - 1:
+                    # Store the transition in memory after reward has been accumulated
+                    _, reward, _, _ = env.step(None)
+                    reward = torch.tensor([reward], device=self.device)
+                    self.memory.push(self.state, self.action, self.next_state, reward)
 
-                    self.state = next_state
+                    self.state = self.next_state
                 
                     # Train after collecting sufficient experience
                     if len(self.memory) >= self.BATCH_SIZE*5:
                         self.update_networks(epi)
 
-                    epi += 1
-                
                 else:
                     env.step(None)
 
@@ -336,7 +340,7 @@ if __name__ == "__main__":
         '--batch_size',
         type=int,
         help='batch size per iteration',
-        default=128
+        default=64
     )
 
     parser.add_argument(

@@ -54,17 +54,20 @@ class Push_Empty_Small_Env(object):
         # The agent to be controlled
         y_pos = random.randint(50,self.screen_size[1]-50)
         self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(self.screen_size[0]*0.75, y_pos), damping=0.99)
-        for key in self._agent:
-            self._agent[key].score = 0
 
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
 
+        # Agent cumulative rewards
+        self.reward = 0
+        self.reward_from_last_action = 0
+
         # Rewards
-        self.collision_penalty = 25
+        self.collision_penalty = 50
         self.action_penalty = 1
-        self.push_reward = 30
+        self.push_reward = 10
         self.obj_to_goal_reward = 1000
+        self.exploration_reward = 0.1
         self.partial_rewards_scale = 10
 
         # Available actions
@@ -225,8 +228,8 @@ class Push_Empty_Small_Env(object):
 
             # Calculate reward
             robot_reward = self.get_reward()
-            self._agent['robot'].score += robot_reward
-            print(self._agent['robot'].score, end='\r')
+            self.reward += robot_reward
+            print(self.reward, end='\r')
             
             if self._done:
                 self.reset()
@@ -254,20 +257,24 @@ class Push_Empty_Small_Env(object):
         self._clock.tick(230)
         pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
 
+        if action is not None:
+            self.reward += self.reward_from_last_action
+            self.reward_from_last_action = 0
+
         # Calculate reward
-        robot_reward = self.get_reward()
-        self._agent['robot'].score += robot_reward
+        self.reward_from_last_action += self.get_reward(True if action is not None else False)
 
         # Items to return
         state = self.state
-        reward = robot_reward
+        reward = self.reward_from_last_action
         done = self._done
         info = {
             'inactivity': None,
             'cumulative_cubes': 0,
             'cumulative_distance': 0,
-            'cumulative_reward': self._agent['robot'].score
+            'cumulative_reward': self.reward
         }
+
         return state, reward, done, info
     
     def _process_events(self) -> None:
@@ -437,7 +444,7 @@ class Push_Empty_Small_Env(object):
         self.state = np.array(self.pxarr).astype('uint8').transpose()
         self.state = np.resize(rescale(self.state, 0.5)*255, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
 
-    def get_reward(self):
+    def get_reward(self, action_taken: bool):
         """
         Penalty for collision with walls
         Penalty for taking an action
@@ -445,16 +452,26 @@ class Push_Empty_Small_Env(object):
         Partial reward/penalty for pushing object closer to / further from goal
         """
         reward = 0
-        reward -= self.action_penalty
+        reward_tracker = ""
+        if action_taken:
+            reward -= self.action_penalty
+            reward_tracker += ":action penalty: "
 
         if self.collision_occuring:
             reward -= self.collision_penalty
+            reward_tracker += ":collision penalty: "
         
         if self.is_pushing:
             reward += self.push_reward
+            reward_tracker += ":push: "
         
         if self._done:
             reward += self.obj_to_goal_reward
+        
+        if not self.is_pushing and not self.collision_occuring:
+            reward += self.exploration_reward # Small reward for diverse actions
+            reward_tracker += ":exploration:"
+        # print(reward_tracker, self.reward_from_last_action)
 
         dist = distance(self._object.position, self.goal_position)
         dist_moved = self.initial_object_dist - dist
@@ -464,9 +481,11 @@ class Push_Empty_Small_Env(object):
         return reward
     
     def reset(self):
-        cumulative_reward = self._agent['robot'].score
+        cumulative_reward = self.reward
+        reward_from_last_action = self.reward_from_last_action
         self.__init__()
-        self._agent['robot'].score = cumulative_reward
+        self.reward = cumulative_reward
+        self.reward_from_last_action = reward_from_last_action
         return self.state
         
     def close(self):
