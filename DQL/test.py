@@ -13,7 +13,9 @@ import torch.nn.functional as F
 import environments
 import models
 
-env = environments.selector(2)
+# env = environments.selector(2)
+env = environments.selector(3)
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 Transition = namedtuple('Transition',
@@ -21,24 +23,28 @@ Transition = namedtuple('Transition',
 
 # Get number of actions from env
 n_actions = len(env.available_actions)
-action_freq = 10
+action_freq = 25
 # Get numbaer of state observations
 state = env.reset()
-n_observations = len(state)
+n_observations = state.shape[0]
 # checkpoint_path = 'model - no pushing.pt'
-checkpoint_path = 'model_push.pt'
+checkpoint_path = 'model_nav.pt'
 
 
 policy_net = models.VisionDQN(n_observations, n_actions).to(device)
+# policy_net = models.VisionDQN_dense(n_observations, n_actions)
 policy_net.eval()
 
 checkpoint = torch.load(checkpoint_path, map_location=device)
 policy_net.load_state_dict(checkpoint)
 
 def select_action(state):
-    return policy_net(state).max(1).indices.view(1,1)
+    # return policy_net(state).max(1).indices.view(1,1)
+    qvalues = policy_net(state)
+    action = torch.argmax(qvalues).item()
+    action = torch.tensor([[action]], device=device, dtype=torch.long)
+    return action
 
-state = env.reset()
 state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
 done = False
 # print(checkpoint['epoch'])

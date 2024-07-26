@@ -7,6 +7,7 @@ import pymunk.pygame_util
 import numpy as np
 from PIL import Image
 from skimage.transform import resize, rescale
+from time import sleep
 
 def limit_velocity(body, gravity, damping, dt):
         max_velocity = 100
@@ -397,6 +398,7 @@ class Nav_Empty_Small_Env(object):
         self._screen.fill(pygame.Color("black"))
         self._draw_objects()
         pygame.display.flip()
+        sleep(1)
 
         screen = np.array(self.pxarr).astype('uint8').transpose()
         self.state[1] = np.resize(rescale(screen, 0.5)*255, (int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
@@ -425,8 +427,7 @@ class Nav_Empty_Small_Env(object):
         """
         Penalty for collision with walls
         Penalty for taking an action
-        Reward for pushing object into goal
-        Partial reward/penalty for pushing object closer to / further from goal
+        Partial reward/penalty for moving closer to / further from goal
         """
         reward = 0
         # reward -= self.action_penalty
@@ -456,7 +457,7 @@ class Nav_Empty_Small_Env(object):
 def main():
     game = Nav_Empty_Small_Env()
     game.run()
-    # img = Image.fromarray(game.state2)
+    # img = Image.fromarray(game.state[1])
     # img.show()
 
 if __name__ == "__main__":

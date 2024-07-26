@@ -44,7 +44,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 class Train_DQL():
-    def __init__(self, state_type, checkpoint_path, checkpoint_interval, num_epoch, batch_size=128):
+    def __init__(self, state_type, model, checkpoint_path, checkpoint_interval, num_epoch, batch_size=128):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.checkpoint_path = checkpoint_path
         self.checkpoint_interval = checkpoint_interval
@@ -62,8 +62,8 @@ class Train_DQL():
         self.LEARNING_RATE = 5e-4    # Learning rate for Adam optimizer
         self.TARGET_UPDATE_FREQ = 20   # Target network update frequency
         self.STARTING_EPSILON = 1.0  # Starting epsilon
-        self.STEPS_MAX = 500000       # Gradually reduce epsilon over these many steps
-        self.EPSILON_END = 0.1 #0.01      # At the end, keep epsilon at this value
+        self.STEPS_MAX = 50000       # Gradually reduce epsilon over these many steps
+        self.EPSILON_END = 0.01      # At the end, keep epsilon at this value
 
         self.EPSILON = self.STARTING_EPSILON
 
@@ -71,7 +71,7 @@ class Train_DQL():
         self.state = env.reset() # state, info = env.reset()
         self.n_observations = len(self.state)
         
-        self.create_or_restore_training_state(state_type)
+        self.create_or_restore_training_state(state_type, model)
 
         self.steps_done = 0 # for exploration
         self.first_contact_made = False # end episode if agent does not push box after x actions
@@ -168,6 +168,8 @@ class Train_DQL():
         state_batch = torch.cat(batch.state)
         action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
+        print(batch.reward)
+        input()
         
         # Get Q(s, a) for every (s, a) in the minibatch
         qvalues = self.policy_net(state_batch).gather(1, action_batch.view(-1, 1)).squeeze()
@@ -356,7 +358,7 @@ if __name__ == "__main__":
         '--environment',
         type=int,
         help='environment to simulate- 0: nav_obstacle, 1: push_empty, 2: push_empty_small, 3: nav_empty_small',
-        default=3
+        default=2
     )
 
     main(parser.parse_args())
