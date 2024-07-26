@@ -4,6 +4,7 @@ sys.path.insert(1, './environments')
 from nav_obstacle_env import Nav_Obstacle_Env
 from push_empty_env import Push_Empty_Env
 from push_empty_small_env import Push_Empty_Small_Env
+from nav_empty_small_env import Nav_Empty_Small_Env
 
 def selector(env_num):
     if env_num == 0:
@@ -12,6 +13,8 @@ def selector(env_num):
         return Push_Empty_Env()
     elif env_num == 2:
         return Push_Empty_Small_Env()
+    elif env_num == 3:
+        return Nav_Empty_Small_Env()
     else:
         print("Bad environment selection")
         return None

@@ -165,7 +165,7 @@ class ResNet(nn.Module):
 
         self.inplanes = 64
         self.dilation = 1
-
+        
         # self.conv1 = nn.Conv2d(num_input_channels, self.inplanes, kernel_size=7, stride=3, padding=3, bias=False)
         self.conv1 = nn.Conv2d(num_input_channels, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(self.inplanes)
