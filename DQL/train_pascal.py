@@ -176,14 +176,22 @@ class Train_DQL():
         
         # Get Q(s, a) for every (s, a) in the minibatch
         qvalues = self.policy_net(state_batch).gather(1, action_batch.view(-1, 1)).squeeze()
-
+        '''
         # Get max_a' Qt(s', a') for every (s') in the minibatch
         q2values = torch.zeros(self.BATCH_SIZE, device=self.device)
         with torch.no_grad():
             q2values[non_final_mask] = torch.max(self.target_net(non_final_next_states), dim = 1).values
-
+        
         # q2value is zero when the state is final ^^
         targets = reward_batch + self.GAMMA * q2values
+        '''
+        # Double DQN Formula: r + gamma*TARGET(s_t+1, argmax_a POLICY(s_t+1, a))
+        q_target_values = torch.zeros(self.BATCH_SIZE, device=self.device)
+        with torch.no_grad():
+            actions = torch.argmax(self.policy_net(non_final_next_states), dim=1).values
+            q_target_values[non_final_mask] = self.target_net(non_final_next_states)[actions].values
+        targets = reward_batch + self.GAMMA * q_target_values
+        
         '''
         # If done, 
         #   y = r(s, a) + GAMMA * max_a' Q(s', a') * (0)
