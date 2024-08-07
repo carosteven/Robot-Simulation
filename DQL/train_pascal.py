@@ -60,9 +60,9 @@ class Train_DQL():
         self.BATCH_SIZE = batch_size     # How many examples to sample per train step
         self.GAMMA = 0.99            # Discount factor in episodic reward objective
         self.LEARNING_RATE = 5e-4    # Learning rate for Adam optimizer
-        self.TARGET_UPDATE_FREQ = 10   # Target network update frequency
+        self.TARGET_UPDATE_FREQ = 20   # Target network update frequency
         self.STARTING_EPSILON = 1.0  # Starting epsilon
-        self.STEPS_MAX = 100000       # Gradually reduce epsilon over these many steps
+        self.STEPS_MAX = 200000       # Gradually reduce epsilon over these many steps
         self.EPSILON_END = 0.01      # At the end, keep epsilon at this value
 
         self.EPSILON = self.STARTING_EPSILON
@@ -76,7 +76,8 @@ class Train_DQL():
         self.create_or_restore_training_state(state_type, model)
 
         self.steps_done = 0 # for exploration
-        self.first_contact_made = False # end episode if agent does not push box after x actions
+        self.contact_made = False # end episode if agent does not push box after x actions
+        self.last_epi_contact_made = 0
 
     def create_or_restore_training_state(self, state_type, model):
         if state_type == 'vision':
@@ -150,8 +151,9 @@ class Train_DQL():
         
         # Epsilon update rule: Keep reducing a small amount over
         # STEPS_MAX number of steps, and at the end, fix to EPSILON_END
+        prev_eps = self.EPSILON
         self.EPSILON = max(self.EPSILON_END, self.EPSILON - (1.0 / self.STEPS_MAX))
-        if self.EPSILON == self.EPSILON_END:
+        if self.EPSILON == self.EPSILON_END and self.EPSILON != prev_eps:
             logging.info("Reached min epsilon")
         # print(EPSILON)
 
@@ -231,21 +233,13 @@ class Train_DQL():
         for epoch in tqdm(range(self.num_epoch)):
             self.state = env.reset()
             self.state = torch.tensor(self.state, dtype=torch.float32, device=self.device).unsqueeze(0)
-            self.first_contact_made = False
+            self.contact_made = False
             logging.info(f'Epoch {self.epoch}')
 
             # actions = []
             epi = 0
             # for frame in tqdm(range(100000)):
             for frame in count():
-                if env.is_pushing:
-                    self.first_contact_made = True
-
-                if epi > 2000 and not self.first_contact_made:
-                    done = True
-                    logging.info("No contact made. Resetting environment...")
-                    # action_path = os.path.join(os.path.dirname(self.checkpoint_path), "actions.pt")
-                    # torch.save(actions, action_path)
 
                 
                 if frame % self.action_freq == 0:
@@ -281,8 +275,17 @@ class Train_DQL():
                     self.commit_state()
                     start_time = cur_time
                 
+                if env.is_pushing:
+                    self.last_epi_contact_made = epi
+
+                if epi > self.last_epi_contact_made + 2000:
+                    done = True
+                    logging.info("No contact made. Resetting environment...")
+                    # action_path = os.path.join(os.path.dirname(self.checkpoint_path), "actions.pt")
+                    # torch.save(actions, action_path)
+
                 if done:
-                    if self.first_contact_made:
+                    if epi <= self.last_epi_contact_made + 2000:
                         logging.info("Object in receptacle. Resetting environment...")
                     break
 
