@@ -476,16 +476,23 @@ class Push_Empty_Small_Env(object):
             reward -= self.collision_penalty
             reward_tracker += ":collision penalty: "
         
+        '''
         if self.is_pushing:
             reward += self.push_reward
             reward_tracker += ":push: "
-        
+        '''
+        if not self.is_pushing:
+            reward -= self.push_reward
+            reward_tracker += ":no push: "
+
         if self._done:
             reward += self.obj_to_goal_reward
         
+        '''
         if not self.is_pushing and not self.collision_occuring and action_taken:
             reward += self.exploration_reward # Small reward for diverse actions
             reward_tracker += ":exploration:"
+        '''
         # print(reward_tracker, self.reward_from_last_action)
 
         dist = distance(self._object.position, self.goal_position)

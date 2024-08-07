@@ -185,11 +185,12 @@ class Train_DQL():
         # q2value is zero when the state is final ^^
         targets = reward_batch + self.GAMMA * q2values
         '''
+        
         # Double DQN Formula: r + gamma*TARGET(s_t+1, argmax_a POLICY(s_t+1, a))
         q_target_values = torch.zeros(self.BATCH_SIZE, device=self.device)
         with torch.no_grad():
-            actions = torch.argmax(self.policy_net(non_final_next_states), dim=1).values
-            q_target_values[non_final_mask] = self.target_net(non_final_next_states)[actions].values
+            actions = torch.argmax(self.policy_net(non_final_next_states), dim=1)
+            q_target_values[non_final_mask] = self.target_net(non_final_next_states).gather(1, actions.unsqueeze(1)).squeeze()
         targets = reward_batch + self.GAMMA * q_target_values
         
         '''
@@ -351,7 +352,7 @@ if __name__ == "__main__":
         '--batch_size',
         type=int,
         help='batch size per iteration',
-        default=64
+        default=32#64
     )
 
     parser.add_argument(

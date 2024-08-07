@@ -51,8 +51,8 @@ while not done:
         action = select_action(state)
         state, reward, done, info = env.step(env.available_actions[action])
         state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-        # print(action, end='\r')
-        print(f'{round(env.reward, 2)} ', end='\r')
+        print(action, end='\r')
+        # print(f'{round(env.reward, 2)} ', end='\r')
     else:
         env.step(None)
         
