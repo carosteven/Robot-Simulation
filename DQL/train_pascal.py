@@ -251,18 +251,19 @@ class Train_DQL():
                 if frame % self.action_freq == 0:
                     # Play an episode and log episodic reward
                     self.action = self.policy()
-                    observation, _, done, _ = env.step(env.available_actions[self.action])
+                    env.step(env.available_actions[self.action])
                     # actions.append(action.item())
-                    if done:
-                        self.next_state = None
-                    else:
-                        self.next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
 
                     epi += 1
                 
                 elif frame % self.action_freq == self.action_freq - 1:
                     # Store the transition in memory after reward has been accumulated
-                    _, reward, _, _ = env.step(None)
+                    observation, reward, done, _ = env.step(None)
+                    if done:
+                        self.next_state = None
+                    else:
+                        self.next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+                        
                     reward = torch.tensor([reward], device=self.device)
                     self.memory.push(self.state, self.action, self.next_state, reward)
 
