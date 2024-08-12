@@ -443,21 +443,8 @@ class Push_Empty_Small_Env(object):
         """
         Gets integer pixel values from screen
         """
-        x,y = self._agent['robot'].position
-        x_low = round(x-100) if x-100 > 0 else 0
-        x_high = round(x+100) if x+100 < 600 else 600
-        y_low = round(y-100) if y-100 > 0 else 0
-        y_high = round(y+100) if y+100 < 600 else 600
-
-        x_idx_high = x_high-x_low if x_high == 600 else 200
-        x_idx_low = 200-x_high if x_low == 0 else 0
-        y_idx_high = y_high-y_low if y_high == 600 else 200
-        y_idx_low = 200-y_high if y_low == 0 else 0
-        
-        # self.state = np.zeros((1,600,600))
-        # self.state[0,x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
-        self.state = np.array(self.pxarr).astype('uint8').transpose()
-        self.state = np.resize(rescale(self.state, 0.5)*255, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
+        self.state = (np.array(self.pxarr).astype(np.float64)/2e32).transpose()
+        self.state = np.resize(rescale(self.state, 0.5)*2e32, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
 
     def get_reward(self, action_taken: bool):
         """

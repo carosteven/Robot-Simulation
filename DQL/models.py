@@ -24,7 +24,7 @@ class SensorDQN(nn.Module):
 class VisionDQN(nn.Module):
     def __init__(self, n_observations, n_actions):
         super(VisionDQN, self).__init__()
-        self.resnet18 = resnet18(num_input_channels=1, num_classes = n_actions)
+        self.resnet18 = resnet18(num_input_channels=n_observations, num_classes = n_actions)
     
     def forward(self, x):
         return self.resnet18(x)

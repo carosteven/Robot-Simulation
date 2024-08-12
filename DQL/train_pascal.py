@@ -1,4 +1,4 @@
-import matplotlib
+import matplotlib.pyplot as plt
 import math
 import random
 import numpy as np
@@ -22,6 +22,8 @@ logging.getLogger('pymunk').propagate = False
 import environments
 import models
 
+from PIL import Image
+
 env = None
 
 Transition = namedtuple('Transition',
@@ -44,7 +46,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 class Train_DQL():
-    def __init__(self, state_type, model, checkpoint_path, checkpoint_interval, num_epoch, batch_size=128):
+    def __init__(self, state_type, model, checkpoint_path, checkpoint_interval, num_epoch, batch_size):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.checkpoint_path = checkpoint_path
         self.checkpoint_interval = checkpoint_interval
@@ -53,8 +55,6 @@ class Train_DQL():
         self.n_actions = len(env.available_actions)
 
         self.action_freq = 25
-        # self.action_freq = 1
-
 
         # Global variables
         self.BATCH_SIZE = batch_size     # How many examples to sample per train step
@@ -69,7 +69,8 @@ class Train_DQL():
 
         # Get number of state observations
         self.state = env.reset() # state, info = env.reset()
-        self.n_observations = len(self.state)
+        # self.n_observations = len(self.state)
+        self.n_observations = 3 # (channels)
         self.next_state = None
         self.action = None
         
@@ -159,6 +160,13 @@ class Train_DQL():
 
         return action
     
+    def transform_state(self, state_batch):
+        colour_batch = torch.zeros((state_batch.shape[0], 3, state_batch.shape[2], state_batch.shape[3]),device=self.device)
+        colour_batch[:,0] = torch.bitwise_right_shift(state_batch[:,0], 16)
+        colour_batch[:,1] = torch.bitwise_right_shift(state_batch[:,0], 8&255)
+        colour_batch[:,2] = torch.bitwise_and(state_batch[:,0], 255)
+        return colour_batch
+    
     def update_networks(self, epi):
     
         # Sample a minibatch (s, a, r, s', d)
@@ -168,12 +176,12 @@ class Train_DQL():
 
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                                 batch.next_state)), device=self.device, dtype=torch.bool)
-        non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
+        non_final_next_states = self.transform_state(torch.cat([s for s in batch.next_state if s is not None]))
 
-        state_batch = torch.cat(batch.state)
+        state_batch = self.transform_state(torch.cat(batch.state))
         action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
-        
+
         # Get Q(s, a) for every (s, a) in the minibatch
         qvalues = self.policy_net(state_batch).gather(1, action_batch.view(-1, 1)).squeeze()
         '''
@@ -203,8 +211,6 @@ class Train_DQL():
         # Detach y since it is the target. Target values should
         # be kept fixed.
         loss = torch.nn.SmoothL1Loss()(targets.detach(), qvalues)
-        # print(qvalues[0], targets[0], end='\r')
-        # print(f'{loss}    {epi}    ', end='\r')
 
         # Backpropagation
         self.optimizer.zero_grad()
@@ -233,12 +239,13 @@ class Train_DQL():
 
         for epoch in tqdm(range(self.num_epoch)):
             self.state = env.reset()
-            self.state = torch.tensor(self.state, dtype=torch.float32, device=self.device).unsqueeze(0)
+            self.state = torch.tensor(self.state, dtype=torch.int32, device=self.device).unsqueeze(0)
             self.contact_made = False
             logging.info(f'Epoch {self.epoch}')
 
             # actions = []
             epi = 0
+            done = False
             # for frame in tqdm(range(100000)):
             for frame in count():
 
@@ -257,7 +264,7 @@ class Train_DQL():
                     if done:
                         self.next_state = None
                     else:
-                        self.next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+                        self.next_state = torch.tensor(observation, dtype=torch.int32, device=self.device).unsqueeze(0)
                         
                     reward = torch.tensor([reward], device=self.device)
                     self.memory.push(self.state, self.action, self.next_state, reward)
@@ -265,7 +272,7 @@ class Train_DQL():
                     self.state = self.next_state
                 
                     # Train after collecting sufficient experience
-                    if len(self.memory) >= self.BATCH_SIZE*5:
+                    if len(self.memory) >= self.BATCH_SIZE*1:
                         self.update_networks(epi)
 
                 else:
