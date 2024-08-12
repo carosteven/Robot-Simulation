@@ -112,6 +112,10 @@ class Push_Empty_Small_Env(object):
             pymunk.Segment(static_body, (0,0), (self.screen_size[0],0), 1),
             pymunk.Segment(static_body, (self.screen_size[0]-1,0), (self.screen_size[0]-1,self.screen_size[1]-1), 1),
             pymunk.Segment(static_body, (0,self.screen_size[1]-1), (self.screen_size[0]-1,self.screen_size[1]-1), 1),
+
+            pymunk.Segment(static_body, (self.screen_size[0]*0.9,0), (self.screen_size[0],self.screen_size[1]*0.1), 1),
+            pymunk.Segment(static_body, (self.screen_size[0]*0.9,self.screen_size[1]), (self.screen_size[0],self.screen_size[1]*0.9), 1),
+            pymunk.Segment(static_body, (0,self.screen_size[1]*0.9), (self.screen_size[0]*0.1,self.screen_size[1]), 1),
         ]
         for line in static_border:
             line.elasticity = 0.95
