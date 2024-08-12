@@ -4,5 +4,6 @@ venv38/
 *.pt
 *.out
 *.log
+*.pyc
 checkpoint/
 logs/
