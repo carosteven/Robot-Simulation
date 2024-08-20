@@ -58,6 +58,8 @@ class Push_Empty_Small_Env(object):
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
 
+        self.take_action = self._actions
+
         # Agent cumulative rewards
         self.reward = 0
         self.reward_from_last_action = 0
@@ -264,7 +266,8 @@ class Push_Empty_Small_Env(object):
             self._space.step(self._dt)
 
         self._process_events()
-        self._actions(action)
+        # self._actions(action)
+        self.take_action(action)
         self._update()
         self._clear_screen()
         self._draw_objects()
