@@ -157,8 +157,9 @@ class Train_DQL():
 
         if self.action_type == 'sln':
             action = np.unravel_index(action, env.screen_size)
-            
-        action = torch.tensor([[action]], device=self.device, dtype=torch.long)
+
+        # action = torch.tensor([[action]], device=self.device, dtype=torch.long)
+        action = torch.tensor(action, device=self.device, dtype=torch.long)
         
         # Epsilon update rule: Keep reducing a small amount over
         # STEPS_MAX number of steps, and at the end, fix to EPSILON_END
@@ -278,7 +279,9 @@ class Train_DQL():
 
     def sln_action_control(self, frame, epi):
         self.action = self.policy()
-        observation, reward, done, _ = env.step(self.action)
+        while not env.action_completed:
+            observation, reward, done, _ = env.step(self.action)
+        env.action_completed = False
 
         if done:
             self.next_state = None

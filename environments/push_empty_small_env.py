@@ -58,7 +58,7 @@ class Push_Empty_Small_Env(object):
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
 
-        self.take_action = self._actions
+        self.take_action = None
 
         # Agent cumulative rewards
         self.reward = 0
@@ -74,6 +74,7 @@ class Push_Empty_Small_Env(object):
 
         # Available actions
         self.available_actions = ['forward', 'backward', 'turn_cw', 'turn_ccw']
+        self.action_completed = False
 
         self.goal_position = (25,75)
         self.initial_object_dist = distance(self._object.position, self.goal_position)
@@ -224,7 +225,7 @@ class Push_Empty_Small_Env(object):
 
             action = self._process_events()
             self._actions(action)
-            coord = (20,250)
+            coord = (233,85)
             if not reached_loc:
                 reached_loc = self.straight_line_navigation(coord)
             self._update()
@@ -267,7 +268,7 @@ class Push_Empty_Small_Env(object):
 
         self._process_events()
         # self._actions(action)
-        self.take_action(action)
+        self.action_completed = self.take_action(action)
         self._update()
         self._clear_screen()
         self._draw_objects()
@@ -376,10 +377,10 @@ class Push_Empty_Small_Env(object):
         """
         self._space.debug_draw(self._draw_options)
 
-    def _actions(self, action) -> None:
+    def _actions(self, action) -> bool:
         """
         action: 'forward', 'backward', 'turn_cw', 'turn_ccw'
-        :return: None
+        :return: action_completed
         """
         if action == 'forward':
             self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * -50
@@ -412,8 +413,10 @@ class Push_Empty_Small_Env(object):
             self._agent['wheel_2'].velocity += self._agent['wheel_2'].rotation_vector.perpendicular() * -50
             self._agent['wheel_2'].latch = True
             self._agent['wheel_2'].forward = True
+        
+        return True
 
-    def straight_line_navigation(self, coords) -> None:
+    def straight_line_navigation(self, coords) -> bool:
         if self.collision_occuring or (self.obj_coll_obst and self.is_pushing):
             return True
         # Get the heading of the robot
@@ -423,6 +426,7 @@ class Push_Empty_Small_Env(object):
         front_x = self._agent['robot'].local_to_world((0, -25)).x
         front_y = self._agent['robot'].local_to_world((0, -25)).y
         angle_to_coords = np.arctan2(coords[1] - front_y, coords[0] - front_x) % (2*np.pi)
+        print(angle, angle_to_coords)
 
         # Get the distance between the front of the robot and the coordinates
         dist = distance(pymunk.vec2d.Vec2d(front_x, front_y), coords)
@@ -433,6 +437,8 @@ class Push_Empty_Small_Env(object):
                 self._actions('forward')
             else:
                 return True
+        elif abs(angle + np.pi - angle_to_coords) < 0.1: # robot gets stuck if over coord, so push it backward a bit
+            self._actions('backward')
         
         # Adjust heading of robot using actions to minimize the angle between the robot and the coordinates
         elif angle_to_coords > angle:
@@ -537,9 +543,11 @@ class Push_Empty_Small_Env(object):
     def reset(self):
         cumulative_reward = self.reward
         reward_from_last_action = self.reward_from_last_action
+        action_function = self.take_action
         self.__init__()
         self.reward = cumulative_reward
         self.reward_from_last_action = reward_from_last_action
+        self.take_action = action_function
         return self.state
         
     def close(self):
