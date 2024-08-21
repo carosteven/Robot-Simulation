@@ -237,9 +237,9 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def features(self, x: Tensor) -> Tensor: # idea from SAM
         x = self.conv1(x)
-        x = self.bn1(x)
+        # x = self.bn1(x) #TODO test if removing increases performance
         x = self.relu(x)
         x = self.maxpool(x)
 
@@ -248,12 +248,15 @@ class ResNet(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
+        return x
+    
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.features(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
 
         return x
-    
 
 def resnet18(pretrained=False, **kwargs):
     """Constructs a ResNet-18 model.
