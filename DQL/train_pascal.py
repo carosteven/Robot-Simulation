@@ -53,7 +53,7 @@ class Train_DQL():
         self.checkpoint_interval = checkpoint_interval
         self.num_epoch = num_epoch
         # Get number of actions from env
-        self.n_actions = len(env.available_actions)
+        self.n_actions = len(env.available_actions) if action_type == 'primitive' else env.screen_size[0]*env.screen_size[1]
 
         self.action_freq = 25
 
@@ -84,8 +84,13 @@ class Train_DQL():
     def create_or_restore_training_state(self, state_type, model):
         if state_type == 'vision':
             if model == 'resnet':
-                self.policy_net = models.VisionDQN(self.n_observations, self.n_actions)
-                self.target_net = models.VisionDQN(self.n_observations, self.n_actions)
+                if self.action_type == 'sln':
+                    self.policy_net = models.VisionDQN_SAM(self.n_observations, self.n_actions)
+                    self.target_net = models.VisionDQN_SAM(self.n_observations, self.n_actions)
+                else:
+                    self.policy_net = models.VisionDQN(self.n_observations, self.n_actions)
+                    self.target_net = models.VisionDQN(self.n_observations, self.n_actions)
+
             elif model == 'densenet':
                 self.policy_net = models.VisionDQN_dense(self.n_observations, self.n_actions)
                 self.target_net = models.VisionDQN_dense(self.n_observations, self.n_actions)
@@ -149,6 +154,10 @@ class Train_DQL():
         else:
             qvalues = self.policy_net(self.state)
             action = torch.argmax(qvalues).item()
+
+        if self.action_type == 'sln':
+            action = np.unravel_index(action, env.screen_size)
+            
         action = torch.tensor([[action]], device=self.device, dtype=torch.long)
         
         # Epsilon update rule: Keep reducing a small amount over
@@ -269,13 +278,30 @@ class Train_DQL():
 
     def sln_action_control(self, frame, epi):
         self.action = self.policy()
+        observation, reward, done, _ = env.step(self.action)
+
+        if done:
+            self.next_state = None
+        else:
+            self.next_state = torch.tensor(observation, dtype=torch.int32, device=self.device).unsqueeze(0)
+            
+        reward = torch.tensor([reward], device=self.device)
+        self.memory.push(self.state, self.action, self.next_state, reward)
+
+        self.state = self.next_state
+    
+        # Train after collecting sufficient experience
+        if len(self.memory) >= self.BATCH_SIZE*1:
+            self.update_networks(epi)
+
+        epi += 1
+        return epi
 
     def primitive_action_control(self, frame, epi):
         if frame % self.action_freq == 0:
             # Play an episode and log episodic reward
             self.action = self.policy()
             env.step(env.available_actions[self.action])
-            # actions.append(action.item())
 
             epi += 1
         
