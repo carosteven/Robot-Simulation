@@ -46,13 +46,14 @@ class ReplayMemory(object):
         return len(self.memory)
 
 class Train_DQL():
-    def __init__(self, state_type, model, checkpoint_path, checkpoint_interval, num_epoch, batch_size):
+    def __init__(self, state_type, action_type, model, checkpoint_path, checkpoint_interval, num_epoch, batch_size):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.action_type = action_type
         self.checkpoint_path = checkpoint_path
         self.checkpoint_interval = checkpoint_interval
         self.num_epoch = num_epoch
         # Get number of actions from env
-        self.n_actions = len(env.available_actions)
+        self.n_actions = len(env.available_actions) if action_type == 'primitive' else env.screen_size[0]*env.screen_size[1]
 
         self.action_freq = 25
 
@@ -83,8 +84,13 @@ class Train_DQL():
     def create_or_restore_training_state(self, state_type, model):
         if state_type == 'vision':
             if model == 'resnet':
-                self.policy_net = models.VisionDQN(self.n_observations, self.n_actions)
-                self.target_net = models.VisionDQN(self.n_observations, self.n_actions)
+                if self.action_type == 'sln':
+                    self.policy_net = models.VisionDQN_SAM(self.n_observations, self.n_actions)
+                    self.target_net = models.VisionDQN_SAM(self.n_observations, self.n_actions)
+                else:
+                    self.policy_net = models.VisionDQN(self.n_observations, self.n_actions)
+                    self.target_net = models.VisionDQN(self.n_observations, self.n_actions)
+
             elif model == 'densenet':
                 self.policy_net = models.VisionDQN_dense(self.n_observations, self.n_actions)
                 self.target_net = models.VisionDQN_dense(self.n_observations, self.n_actions)
@@ -148,7 +154,12 @@ class Train_DQL():
         else:
             qvalues = self.policy_net(self.state)
             action = torch.argmax(qvalues).item()
-        action = torch.tensor([[action]], device=self.device, dtype=torch.long)
+
+        if self.action_type == 'sln':
+            action = np.unravel_index(action, env.screen_size)
+
+        # action = torch.tensor([[action]], device=self.device, dtype=torch.long)
+        action = torch.tensor(action, device=self.device, dtype=torch.long)
         
         # Epsilon update rule: Keep reducing a small amount over
         # STEPS_MAX number of steps, and at the end, fix to EPSILON_END
@@ -200,14 +211,7 @@ class Train_DQL():
             actions = torch.argmax(self.policy_net(non_final_next_states), dim=1)
             q_target_values[non_final_mask] = self.target_net(non_final_next_states).gather(1, actions.unsqueeze(1)).squeeze()
         targets = reward_batch + self.GAMMA * q_target_values
-        
-        '''
-        # If done, 
-        #   y = r(s, a) + GAMMA * max_a' Q(s', a') * (0)
-        # If not done,
-        #   y = r(s, a) + GAMMA * max_a' Q(s', a') * (1)       
-        targets = reward_batch + self.GAMMA * q2values * (1-env._done)
-        '''
+
         # Detach y since it is the target. Target values should
         # be kept fixed.
         loss = torch.nn.SmoothL1Loss()(targets.detach(), qvalues)
@@ -248,35 +252,11 @@ class Train_DQL():
             done = False
             # for frame in tqdm(range(100000)):
             for frame in count():
+                if self.action_type == 'primitive':
+                    epi = self.primitive_action_control(frame, epi)
 
-                
-                if frame % self.action_freq == 0:
-                    # Play an episode and log episodic reward
-                    self.action = self.policy()
-                    env.step(env.available_actions[self.action])
-                    # actions.append(action.item())
-
-                    epi += 1
-                
-                elif frame % self.action_freq == self.action_freq - 1:
-                    # Store the transition in memory after reward has been accumulated
-                    observation, reward, done, _ = env.step(None)
-                    if done:
-                        self.next_state = None
-                    else:
-                        self.next_state = torch.tensor(observation, dtype=torch.int32, device=self.device).unsqueeze(0)
-                        
-                    reward = torch.tensor([reward], device=self.device)
-                    self.memory.push(self.state, self.action, self.next_state, reward)
-
-                    self.state = self.next_state
-                
-                    # Train after collecting sufficient experience
-                    if len(self.memory) >= self.BATCH_SIZE*1:
-                        self.update_networks(epi)
-
-                else:
-                    env.step(None)
+                elif self.action_type == 'sln':
+                    epi = self.sln_action_control(frame, epi)
 
                 cur_time = time.time()
                 if cur_time - start_time > self.checkpoint_interval:
@@ -289,8 +269,6 @@ class Train_DQL():
                 if epi > self.last_epi_contact_made + 2000:
                     done = True
                     logging.info("No contact made. Resetting environment...")
-                    # action_path = os.path.join(os.path.dirname(self.checkpoint_path), "actions.pt")
-                    # torch.save(actions, action_path)
 
                 if done:
                     if epi <= self.last_epi_contact_made + 2000:
@@ -298,6 +276,59 @@ class Train_DQL():
                     break
 
             self.epoch += 1
+
+    def sln_action_control(self, frame, epi):
+        self.action = self.policy()
+        while not env.action_completed:
+            observation, reward, done, _ = env.step(self.action)
+        env.action_completed = False
+
+        if done:
+            self.next_state = None
+        else:
+            self.next_state = torch.tensor(observation, dtype=torch.int32, device=self.device).unsqueeze(0)
+            
+        reward = torch.tensor([reward], device=self.device)
+        self.memory.push(self.state, self.action, self.next_state, reward)
+
+        self.state = self.next_state
+    
+        # Train after collecting sufficient experience
+        if len(self.memory) >= self.BATCH_SIZE*1:
+            self.update_networks(epi)
+
+        epi += 1
+        return epi
+
+    def primitive_action_control(self, frame, epi):
+        if frame % self.action_freq == 0:
+            # Play an episode and log episodic reward
+            self.action = self.policy()
+            env.step(env.available_actions[self.action])
+
+            epi += 1
+        
+        elif frame % self.action_freq == self.action_freq - 1:
+            # Store the transition in memory after reward has been accumulated
+            observation, reward, done, _ = env.step(None)
+            if done:
+                self.next_state = None
+            else:
+                self.next_state = torch.tensor(observation, dtype=torch.int32, device=self.device).unsqueeze(0)
+                
+            reward = torch.tensor([reward], device=self.device)
+            self.memory.push(self.state, self.action, self.next_state, reward)
+
+            self.state = self.next_state
+        
+            # Train after collecting sufficient experience
+            if len(self.memory) >= self.BATCH_SIZE*1:
+                self.update_networks(epi)
+
+        else:
+            env.step(None)
+        
+        return epi
     
 
 def main(args):
@@ -309,9 +340,13 @@ def main(args):
 
     env = environments.selector(args.environment)
     env.state_type = args.state_type
+    if args.action_type == 'primitive':
+        env.take_action = env._actions
+    elif args.action_type == 'sln':
+        env.take_action = env.straight_line_navigation
     
 
-    train = Train_DQL(args.state_type, args.model, args.checkpoint_path, args.checkpoint_interval, args.num_epoch, args.batch_size)
+    train = Train_DQL(args.state_type, args.action_type, args.model, args.checkpoint_path, args.checkpoint_interval, args.num_epoch, args.batch_size)
     
     # check if the checkpoint exists and try to resume from the last checkpoint
     # if you are saving for every epoch, you can skip the part about
@@ -333,6 +368,13 @@ if __name__ == "__main__":
         type=str,
         help='options: ["vision", "sensor"]',
         default= 'vision'
+    )
+
+    parser.add_argument(
+        '--action_type',
+        type=str,
+        help='options: ["primitive", "sln"]',
+        default= 'sln'
     )
 
     parser.add_argument(

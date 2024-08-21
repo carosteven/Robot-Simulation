@@ -58,6 +58,8 @@ class Push_Empty_Small_Env(object):
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
 
+        self.take_action = None
+
         # Agent cumulative rewards
         self.reward = 0
         self.reward_from_last_action = 0
@@ -72,6 +74,7 @@ class Push_Empty_Small_Env(object):
 
         # Available actions
         self.available_actions = ['forward', 'backward', 'turn_cw', 'turn_ccw']
+        self.action_completed = False
 
         self.goal_position = (25,75)
         self.initial_object_dist = distance(self._object.position, self.goal_position)
@@ -214,6 +217,7 @@ class Push_Empty_Small_Env(object):
         :return: None
         """
         # Main Loop
+        reached_loc = False
         while self._running:
             # Progress time forward
             for x in range(self._physics_steps_per_frame):
@@ -221,8 +225,13 @@ class Push_Empty_Small_Env(object):
 
             action = self._process_events()
             self._actions(action)
+            coord = (233,85)
+            if not reached_loc:
+                reached_loc = self.straight_line_navigation(coord)
             self._update()
             self._clear_screen()
+            # make a dot where the coord is
+            pygame.draw.circle(self._screen, (0,0,0), coord, 5)
             self._draw_objects()
             self.get_state()
             
@@ -242,7 +251,7 @@ class Push_Empty_Small_Env(object):
             # Calculate reward
             # robot_reward = self.get_reward()
             # self.reward += robot_reward
-            print(f'{self.reward} \t\t\t\t {self.reward_from_last_action}', end='\r')
+            # print(f'{self.reward} \t\t\t\t {self.reward_from_last_action}', end='\r')
             
             if self._done:
                 self.reset()
@@ -258,7 +267,8 @@ class Push_Empty_Small_Env(object):
             self._space.step(self._dt)
 
         self._process_events()
-        self._actions(action)
+        # self._actions(action)
+        self.action_completed = self.take_action(action)
         self._update()
         self._clear_screen()
         self._draw_objects()
@@ -311,16 +321,12 @@ class Push_Empty_Small_Env(object):
                         self._actions('rot_ccw')
                 else:
                     if keys[pygame.K_UP]:
-                        # self._actions('forward')
                         action = 'forward'
                     elif keys[pygame.K_DOWN]:
-                        # self._actions('backward')
                         action = 'backward'
                     elif keys[pygame.K_LEFT]:
-                        # self._actions('turn_ccw')
                         action = 'turn_ccw'
                     elif keys[pygame.K_RIGHT]:
-                        # self._actions('turn_cw')
                         action = 'turn_cw'
         return action
     
@@ -371,10 +377,10 @@ class Push_Empty_Small_Env(object):
         """
         self._space.debug_draw(self._draw_options)
 
-    def _actions(self, action) -> None:
+    def _actions(self, action) -> bool:
         """
         action: 'forward', 'backward', 'turn_cw', 'turn_ccw'
-        :return: None
+        :return: action_completed
         """
         if action == 'forward':
             self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * -50
@@ -407,6 +413,47 @@ class Push_Empty_Small_Env(object):
             self._agent['wheel_2'].velocity += self._agent['wheel_2'].rotation_vector.perpendicular() * -50
             self._agent['wheel_2'].latch = True
             self._agent['wheel_2'].forward = True
+        
+        return True
+
+    def straight_line_navigation(self, coords) -> bool:
+        if self.collision_occuring or (self.obj_coll_obst and self.is_pushing):
+            return True
+        # Get the heading of the robot
+        angle = (self._agent['robot'].angle - (np.pi/2)) % (2*np.pi)
+
+        # Get the angle between the front of the robot and the coordinates
+        front_x = self._agent['robot'].local_to_world((0, -25)).x
+        front_y = self._agent['robot'].local_to_world((0, -25)).y
+        angle_to_coords = np.arctan2(coords[1] - front_y, coords[0] - front_x) % (2*np.pi)
+        print(angle, angle_to_coords)
+
+        # Get the distance between the front of the robot and the coordinates
+        dist = distance(pymunk.vec2d.Vec2d(front_x, front_y), coords)
+        
+        # If the robot heading is close enough to the coordinates, move forward to minimize the distance
+        if abs(angle - angle_to_coords) < 0.1:
+            if abs(dist) > 5:
+                self._actions('forward')
+            else:
+                return True
+        elif abs(angle + np.pi - angle_to_coords) < 0.1: # robot gets stuck if over coord, so push it backward a bit
+            self._actions('backward')
+        
+        # Adjust heading of robot using actions to minimize the angle between the robot and the coordinates
+        elif angle_to_coords > angle:
+            if angle_to_coords - angle > np.pi:
+                self._actions('turn_ccw')
+            else:
+                self._actions('turn_cw')
+        else:
+            if angle - angle_to_coords > np.pi:
+                self._actions('turn_cw')
+            else:
+                self._actions('turn_ccw')
+        return False
+        
+
 
     def collision_begin(self, arbiter, space, dummy):
         shapes = arbiter.shapes
@@ -496,9 +543,11 @@ class Push_Empty_Small_Env(object):
     def reset(self):
         cumulative_reward = self.reward
         reward_from_last_action = self.reward_from_last_action
+        action_function = self.take_action
         self.__init__()
         self.reward = cumulative_reward
         self.reward_from_last_action = reward_from_last_action
+        self.take_action = action_function
         return self.state
         
     def close(self):
