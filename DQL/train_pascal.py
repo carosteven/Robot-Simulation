@@ -68,7 +68,7 @@ class Train_DQL():
         self.EPSILON = self.STARTING_EPSILON
 
         # Get number of state observations
-        self.state = env.reset() # state, info = env.reset()
+        self.state = torch.tensor(env.reset(), dtype=torch.int32, device=self.device).unsqueeze(0)
         # self.n_observations = len(self.state)
         self.n_observations = 3 # (channels)
         self.next_state = None
@@ -97,7 +97,7 @@ class Train_DQL():
         # self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.LEARNING_RATE)
         # self.optimizer = optim.SGD(self.policy_net.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0001)
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=self.LEARNING_RATE, weight_decay=0.01)
-        self.memory = ReplayMemory(50000)
+        self.memory = ReplayMemory(10000)
         self.epoch = 0
         self.loss = 0
 
@@ -146,7 +146,7 @@ class Train_DQL():
         if np.random.rand() < self.EPSILON:
             action = np.random.randint(self.n_actions)
         else:
-            qvalues = self.policy_net(self.state)
+            qvalues = self.policy_net(self.transform_state(self.state))
             action = torch.argmax(qvalues).item()
         action = torch.tensor([[action]], device=self.device, dtype=torch.long)
         
@@ -177,7 +177,6 @@ class Train_DQL():
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                                 batch.next_state)), device=self.device, dtype=torch.bool)
         non_final_next_states = self.transform_state(torch.cat([s for s in batch.next_state if s is not None]))
-
         state_batch = self.transform_state(torch.cat(batch.state))
         action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
@@ -230,7 +229,6 @@ class Train_DQL():
                     state[k] = v.to(self.device)
 
     def train(self):
-        # epsilon greedy exploration
 
         start_time = time.time()
         self.policy_net = self.policy_net.to(self.device)
@@ -238,8 +236,8 @@ class Train_DQL():
         self.optimizer_to_dev()
 
         for epoch in tqdm(range(self.num_epoch)):
-            self.state = env.reset()
-            self.state = torch.tensor(self.state, dtype=torch.int32, device=self.device).unsqueeze(0)
+            # Reset environment and get new state
+            self.state = torch.tensor(env.reset(), dtype=torch.int32, device=self.device).unsqueeze(0)
             self.contact_made = False
             logging.info(f'Epoch {self.epoch}')
 
@@ -272,7 +270,7 @@ class Train_DQL():
                     self.state = self.next_state
                 
                     # Train after collecting sufficient experience
-                    if len(self.memory) >= self.BATCH_SIZE*1:
+                    if len(self.memory) >= self.BATCH_SIZE*5:
                         self.update_networks(epi)
 
                 else:
@@ -289,8 +287,6 @@ class Train_DQL():
                 if epi > self.last_epi_contact_made + 2000:
                     done = True
                     logging.info("No contact made. Resetting environment...")
-                    # action_path = os.path.join(os.path.dirname(self.checkpoint_path), "actions.pt")
-                    # torch.save(actions, action_path)
 
                 if done:
                     if epi <= self.last_epi_contact_made + 2000:
@@ -360,7 +356,7 @@ if __name__ == "__main__":
         '--batch_size',
         type=int,
         help='batch size per iteration',
-        default=32#64
+        default=8#64
     )
 
     parser.add_argument(

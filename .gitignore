@@ -7,3 +7,4 @@ venv38/
 *.pyc
 checkpoint/
 logs/
+__pycache__/
