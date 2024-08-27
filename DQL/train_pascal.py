@@ -261,7 +261,7 @@ class Train_DQL():
                 if env.is_pushing:
                     self.last_epi_contact_made = epi
 
-                if epi > self.last_epi_contact_made + 2000:
+                if epi > self.last_epi_contact_made + 2000: # Make this a parameter
                     done = True
                     logging.info("No contact made. Resetting environment...")
 
@@ -274,15 +274,11 @@ class Train_DQL():
 
     def sln_action_control(self, frame, epi):
         self.action = self.policy()
-        action = np.unravel_index(self.action[0,0].cpu(), (int(env.screen_size[0]/2), int(env.screen_size[1]/2))) # TODO check if this is correct (action is for 152x152 but screen is 304x304)
+        action = np.unravel_index(self.action[0,0].cpu(), (int(env.screen_size[0]/2), int(env.screen_size[1]/2)))
         action = (action[0]*2, action[1]*2)
 
         while not env.action_completed:
             observation, reward, done, _ = env.step(action)
-            if done:
-                print("Episode done")
-                print()
-                print()
         env.action_completed = False
 
         if done:
@@ -296,7 +292,7 @@ class Train_DQL():
         self.state = self.next_state
     
         # Train after collecting sufficient experience
-        if len(self.memory) >= self.BATCH_SIZE*20:
+        if len(self.memory) >= self.BATCH_SIZE*5:
             self.update_networks(epi)
 
         epi += 1
