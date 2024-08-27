@@ -76,13 +76,13 @@ class Train_DQL():
         self.next_state = None
         self.action = None
         
-        self.create_or_restore_training_state(config['state_type'], config['model'])
+        self.create_or_restore_training_state(config['state_type'], config['model'], config['replay_buffer_size'])
 
         self.steps_done = 0 # for exploration
         self.contact_made = False # end episode if agent does not push box after x actions
         self.last_epi_contact_made = 0
 
-    def create_or_restore_training_state(self, state_type, model):
+    def create_or_restore_training_state(self, state_type, model, buffer_size):
         if state_type == 'vision':
             if model == 'resnet':
                 if self.action_type == 'straight_line_navigation':
@@ -104,7 +104,7 @@ class Train_DQL():
         # self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.LEARNING_RATE)
         # self.optimizer = optim.SGD(self.policy_net.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0001)
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=self.LEARNING_RATE, weight_decay=0.01)
-        self.memory = ReplayMemory(50000)
+        self.memory = ReplayMemory(buffer_size)
         self.epoch = 0
         self.loss = 0
 
@@ -156,7 +156,8 @@ class Train_DQL():
             qvalues = self.policy_net(self.state)
             action = torch.argmax(qvalues).item()
 
-        if self.action_type == 'straight-line-navigation':           action = np.unravel_index(action, env.screen_size)
+        if self.action_type == 'straight-line-navigation':
+            action = np.unravel_index(action, env.screen_size)
 
         # action = torch.tensor([[action]], device=self.device, dtype=torch.long)
         action = torch.tensor(action, device=self.device, dtype=torch.long)
