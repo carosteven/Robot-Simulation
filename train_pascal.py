@@ -52,7 +52,8 @@ class Train_DQL():
         self.action_type = config['action_type']
         self.checkpoint_path = config['checkpoint_path']
         self.checkpoint_interval = config['checkpoint_interval']
-        self.num_epoch = config['num_epoch']
+        self.num_epochs = config['num_epochs']
+        self.num_of_batches_before_train = config['num_of_batches_before_train']
         # Get number of actions from env
         self.n_actions = len(env.available_actions) if config['action_type'] == 'primitive' else env.screen_size[0]*env.screen_size[1]
 
@@ -242,7 +243,7 @@ class Train_DQL():
         self.target_net = self.target_net.to(self.device)
         self.optimizer_to_dev()
 
-        for epoch in tqdm(range(self.num_epoch)):
+        for epoch in tqdm(range(self.num_epochs)):
             self.state = env.reset()
             self.state = torch.tensor(self.state, dtype=torch.int32, device=self.device).unsqueeze(0)
             self.contact_made = False
@@ -295,7 +296,7 @@ class Train_DQL():
         self.state = self.next_state
     
         # Train after collecting sufficient experience
-        if len(self.memory) >= self.BATCH_SIZE*1:
+        if len(self.memory) >= self.BATCH_SIZE*self.num_of_batches_before_trainelf.num_of_batches_before_train:
             self.update_networks(epi)
 
         epi += 1
@@ -323,7 +324,7 @@ class Train_DQL():
             self.state = self.next_state
         
             # Train after collecting sufficient experience
-            if len(self.memory) >= self.BATCH_SIZE*1:
+            if len(self.memory) >= self.BATCH_SIZE*self.num_of_batches_before_train:
                 self.update_networks(epi)
 
         else:
