@@ -225,7 +225,7 @@ class Push_Empty_Small_Env(object):
 
             action = self._process_events()
             self._actions(action)
-            coord = (233,85)
+            coord = (200,75)
             if not reached_loc:
                 reached_loc = self.straight_line_navigation(coord)
             self._update()
@@ -430,12 +430,15 @@ class Push_Empty_Small_Env(object):
         # Get the distance between the front of the robot and the coordinates
         dist = distance(pymunk.vec2d.Vec2d(front_x, front_y), coords)
         
+        # If the robot is close enough to the coordinates, stop
+        if dist < 5:
+            return True
+        
         # If the robot heading is close enough to the coordinates, move forward to minimize the distance
-        if abs(angle - angle_to_coords) < 0.1:
+        elif abs(angle - angle_to_coords) < 0.1:
             if abs(dist) > 5:
                 self._actions('forward')
-            else:
-                return True
+
         elif abs(angle + np.pi - angle_to_coords) < 0.1: # robot gets stuck if over coord, so push it backward a bit
             self._actions('backward')
         

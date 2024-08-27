@@ -296,7 +296,7 @@ class Train_DQL():
         self.state = self.next_state
     
         # Train after collecting sufficient experience
-        if len(self.memory) >= self.BATCH_SIZE*3:
+        if len(self.memory) >= self.BATCH_SIZE*20:
             self.update_networks(epi)
 
         epi += 1
