@@ -62,7 +62,7 @@ class Train_DQL():
         self.GAMMA = 0.99            # Discount factor in episodic reward objective
         self.LEARNING_RATE = 5e-4    # Learning rate for Adam optimizer
         self.TARGET_UPDATE_FREQ = 20   # Target network update frequency
-        self.STARTING_EPSILON = 1.0  # Starting epsilon
+        self.STARTING_EPSILON = 1  # Starting epsilon
         self.STEPS_MAX = 200000       # Gradually reduce epsilon over these many steps
         self.EPSILON_END = 0.01      # At the end, keep epsilon at this value
 
@@ -85,8 +85,8 @@ class Train_DQL():
         if state_type == 'vision':
             if model == 'resnet':
                 if self.action_type == 'sln':
-                    self.policy_net = models.VisionDQN_SAM(self.n_observations, self.n_actions)
-                    self.target_net = models.VisionDQN_SAM(self.n_observations, self.n_actions)
+                    self.policy_net = models.VisionDQN_SAM(self.n_observations)
+                    self.target_net = models.VisionDQN_SAM(self.n_observations)
                 else:
                     self.policy_net = models.VisionDQN(self.n_observations, self.n_actions)
                     self.target_net = models.VisionDQN(self.n_observations, self.n_actions)
@@ -150,16 +150,12 @@ class Train_DQL():
         # With probability EPSILON, choose a random action
         # Rest of the time, choose argmax_a Q(s, a) 
         if np.random.rand() < self.EPSILON:
-            action = np.random.randint(self.n_actions)
+            action = np.random.randint(self.n_actions/4) # /4 because the screen is 304x304 but the action space is 152x152
         else:
             qvalues = self.policy_net(self.transform_state(self.state))
             action = torch.argmax(qvalues).item()
 
-        if self.action_type == 'sln':
-            action = np.unravel_index(action, env.screen_size)
-
-        # action = torch.tensor([[action]], device=self.device, dtype=torch.long)
-        action = torch.tensor(action, device=self.device, dtype=torch.long)
+        action = torch.tensor([[action]], device=self.device, dtype=torch.long)
         
         # Epsilon update rule: Keep reducing a small amount over
         # STEPS_MAX number of steps, and at the end, fix to EPSILON_END
@@ -167,7 +163,6 @@ class Train_DQL():
         self.EPSILON = max(self.EPSILON_END, self.EPSILON - (1.0 / self.STEPS_MAX))
         if self.EPSILON == self.EPSILON_END and self.EPSILON != prev_eps:
             logging.info("Reached min epsilon")
-        # print(EPSILON)
 
         return action
     
@@ -194,6 +189,7 @@ class Train_DQL():
 
         # Get Q(s, a) for every (s, a) in the minibatch
         qvalues = self.policy_net(state_batch).gather(1, action_batch.view(-1, 1)).squeeze()
+
         '''
         # Get max_a' Qt(s', a') for every (s') in the minibatch
         q2values = torch.zeros(self.BATCH_SIZE, device=self.device)
@@ -205,6 +201,7 @@ class Train_DQL():
         '''
         
         # Double DQN Formula: r + gamma*TARGET(s_t+1, argmax_a POLICY(s_t+1, a))
+        # TODO why are q2values zero when the state is final?
         q_target_values = torch.zeros(self.BATCH_SIZE, device=self.device)
         with torch.no_grad():
             actions = torch.argmax(self.policy_net(non_final_next_states), dim=1)
@@ -251,10 +248,10 @@ class Train_DQL():
             # for frame in tqdm(range(100000)):
             for frame in count():
                 if self.action_type == 'primitive':
-                    epi = self.primitive_action_control(frame, epi)
+                    epi, done = self.primitive_action_control(frame, epi)
 
                 elif self.action_type == 'sln':
-                    epi = self.sln_action_control(frame, epi)
+                    epi, done = self.sln_action_control(frame, epi)
 
                 cur_time = time.time()
                 if cur_time - start_time > self.checkpoint_interval:
@@ -277,8 +274,15 @@ class Train_DQL():
 
     def sln_action_control(self, frame, epi):
         self.action = self.policy()
+        action = np.unravel_index(self.action[0,0].cpu(), (int(env.screen_size[0]/2), int(env.screen_size[1]/2))) # TODO check if this is correct (action is for 152x152 but screen is 304x304)
+        action = (action[0]*2, action[1]*2)
+
         while not env.action_completed:
-            observation, reward, done, _ = env.step(self.action)
+            observation, reward, done, _ = env.step(action)
+            if done:
+                print("Episode done")
+                print()
+                print()
         env.action_completed = False
 
         if done:
@@ -292,11 +296,11 @@ class Train_DQL():
         self.state = self.next_state
     
         # Train after collecting sufficient experience
-        if len(self.memory) >= self.BATCH_SIZE*1:
+        if len(self.memory) >= self.BATCH_SIZE*3:
             self.update_networks(epi)
 
         epi += 1
-        return epi
+        return epi, done
 
     def primitive_action_control(self, frame, epi):
         if frame % self.action_freq == 0:

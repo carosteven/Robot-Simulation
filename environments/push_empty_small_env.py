@@ -38,7 +38,7 @@ class Push_Empty_Small_Env(object):
         # pygame
         pygame.display.init()
         pygame.font.init()
-        self.screen_size = (300,300)
+        self.screen_size = (304,304)
         self._screen = pygame.display.set_mode(self.screen_size)
         self._clock = pygame.time.Clock()
 
@@ -417,7 +417,7 @@ class Push_Empty_Small_Env(object):
         return True
 
     def straight_line_navigation(self, coords) -> bool:
-        if self.collision_occuring or (self.obj_coll_obst and self.is_pushing):
+        if self.collision_occuring or (self.obj_coll_obst and self.is_pushing) or self._done:
             return True
         # Get the heading of the robot
         angle = (self._agent['robot'].angle - (np.pi/2)) % (2*np.pi)
@@ -426,7 +426,6 @@ class Push_Empty_Small_Env(object):
         front_x = self._agent['robot'].local_to_world((0, -25)).x
         front_y = self._agent['robot'].local_to_world((0, -25)).y
         angle_to_coords = np.arctan2(coords[1] - front_y, coords[0] - front_x) % (2*np.pi)
-        print(angle, angle_to_coords)
 
         # Get the distance between the front of the robot and the coordinates
         dist = distance(pymunk.vec2d.Vec2d(front_x, front_y), coords)

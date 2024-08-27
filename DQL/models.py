@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from networks import resnet18, densenet121
@@ -30,12 +31,12 @@ class VisionDQN(nn.Module):
         return self.resnet18(x)
     
 class VisionDQN_SAM(nn.Module):
-    def __init__(self, n_observations, n_actions):
+    def __init__(self, n_observations):
         super(VisionDQN_SAM, self).__init__()
-        self.resnet18 = resnet18(num_input_channels=n_observations, num_classes = n_actions)
-        self.conv1 = nn.Conv2d(512, 128, kernel_size=1, padding=1)
-        self.conv2 = nn.Conv2d(128, 32, kernel_size=1, padding=1)
-        self.conv3 = nn.Conv2d(32, n_actions, kernel_size=1, padding=1)
+        self.resnet18 = resnet18(num_input_channels=n_observations)
+        self.conv1 = nn.Conv2d(512, 128, kernel_size=1)#, padding=1)
+        self.conv2 = nn.Conv2d(128, 32, kernel_size=1)#, padding=1)
+        self.conv3 = nn.Conv2d(32, 1, kernel_size=1)#, padding=1)
     
     def forward(self, x):
         x = self.resnet18.features(x)
@@ -43,7 +44,7 @@ class VisionDQN_SAM(nn.Module):
         x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)
         x = F.relu(self.conv2(x))
         x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)
-        return self.conv3(x)
+        return torch.flatten(self.conv3(x), 1)
 
     
 class VisionDQN_dense(nn.Module):
