@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 import os
+import yaml
 
 import logging
 logging.getLogger('pymunk').propagate = False
@@ -46,25 +47,26 @@ class ReplayMemory(object):
         return len(self.memory)
 
 class Train_DQL():
-    def __init__(self, state_type, action_type, model, checkpoint_path, checkpoint_interval, num_epoch, batch_size):
+    def __init__(self, config):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.action_type = action_type
-        self.checkpoint_path = checkpoint_path
-        self.checkpoint_interval = checkpoint_interval
-        self.num_epoch = num_epoch
+        self.action_type = config['action_type']
+        self.checkpoint_path = config['checkpoint_path']
+        self.checkpoint_interval = config['checkpoint_interval']
+        self.num_epochs = config['num_epochs']
+        self.num_of_batches_before_train = config['num_of_batches_before_train']
         # Get number of actions from env
-        self.n_actions = len(env.available_actions) if action_type == 'primitive' else env.screen_size[0]*env.screen_size[1]
+        self.n_actions = len(env.available_actions) if config['action_type'] == 'primitive' else env.screen_size[0]*env.screen_size[1]
 
         self.action_freq = 25
 
         # Global variables
-        self.BATCH_SIZE = batch_size     # How many examples to sample per train step
-        self.GAMMA = 0.99            # Discount factor in episodic reward objective
-        self.LEARNING_RATE = 5e-4    # Learning rate for Adam optimizer
-        self.TARGET_UPDATE_FREQ = 20   # Target network update frequency
-        self.STARTING_EPSILON = 1  # Starting epsilon
-        self.STEPS_MAX = 200000       # Gradually reduce epsilon over these many steps
-        self.EPSILON_END = 0.01      # At the end, keep epsilon at this value
+        self.BATCH_SIZE = config['batch_size']                  # How many examples to sample per train step
+        self.GAMMA = config['gamma']                            # Discount factor in episodic reward objective
+        self.LEARNING_RATE = config['lr']                       # Learning rate for Adam optimizer
+        self.TARGET_UPDATE_FREQ = config['target_update_freq']  # Target network update frequency
+        self.STARTING_EPSILON = config['epsilon_start']         # Starting epsilon
+        self.STEPS_MAX = config['epsilon_steps']                # Gradually reduce epsilon over these many steps
+        self.EPSILON_END = config['epsilon_end']                # At the end, keep epsilon at this value
 
         self.EPSILON = self.STARTING_EPSILON
 
@@ -75,16 +77,16 @@ class Train_DQL():
         self.next_state = None
         self.action = None
         
-        self.create_or_restore_training_state(state_type, model)
+        self.create_or_restore_training_state(config['state_type'], config['model'], config['replay_buffer_size'])
 
         self.steps_done = 0 # for exploration
         self.contact_made = False # end episode if agent does not push box after x actions
         self.last_epi_contact_made = 0
 
-    def create_or_restore_training_state(self, state_type, model):
+    def create_or_restore_training_state(self, state_type, model, buffer_size):
         if state_type == 'vision':
             if model == 'resnet':
-                if self.action_type == 'sln':
+                if self.action_type == 'straight-line-navigation':
                     self.policy_net = models.VisionDQN_SAM(self.n_observations)
                     self.target_net = models.VisionDQN_SAM(self.n_observations)
                 else:
@@ -103,7 +105,7 @@ class Train_DQL():
         # self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.LEARNING_RATE)
         # self.optimizer = optim.SGD(self.policy_net.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0001)
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=self.LEARNING_RATE, weight_decay=0.01)
-        self.memory = ReplayMemory(10000)
+        self.memory = ReplayMemory(buffer_size)
         self.epoch = 0
         self.loss = 0
 
@@ -250,7 +252,7 @@ class Train_DQL():
                 if self.action_type == 'primitive':
                     epi, done = self.primitive_action_control(frame, epi)
 
-                elif self.action_type == 'sln':
+                elif self.action_type == 'straight-line-navigation':
                     epi, done = self.sln_action_control(frame, epi)
 
                 cur_time = time.time()
@@ -292,7 +294,7 @@ class Train_DQL():
         self.state = self.next_state
     
         # Train after collecting sufficient experience
-        if len(self.memory) >= self.BATCH_SIZE*5:
+        if len(self.memory) >= self.BATCH_SIZE*self.num_of_batches_before_train:
             self.update_networks(epi)
 
         epi += 1
@@ -320,7 +322,7 @@ class Train_DQL():
             self.state = self.next_state
         
             # Train after collecting sufficient experience
-            if len(self.memory) >= self.BATCH_SIZE*5:
+            if len(self.memory) >= self.BATCH_SIZE*self.num_of_batches_before_train:
                 self.update_networks(epi)
 
         else:
@@ -330,21 +332,23 @@ class Train_DQL():
     
 
 def main(args):
+    with open(args.config_file) as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
     global env
-    if args.log_file is not None:
-        logging.basicConfig(filename=args.log_file,level=logging.DEBUG)
+    if config['log_file'] is not None:
+        logging.basicConfig(filename=config['log_file'],level=logging.DEBUG)
     
     logging.info("starting training script")
 
-    env = environments.selector(args.environment)
-    env.state_type = args.state_type
-    if args.action_type == 'primitive':
+    env = environments.selector(config['environment'])
+    env.state_type = config['state_type']
+    if config['action_type'] == 'primitive':
         env.take_action = env._actions
-    elif args.action_type == 'sln':
+    elif config['action_type'] == 'sln':
         env.take_action = env.straight_line_navigation
     
 
-    train = Train_DQL(args.state_type, args.action_type, args.model, args.checkpoint_path, args.checkpoint_interval, args.num_epoch, args.batch_size)
+    train = Train_DQL(config)
     
     # check if the checkpoint exists and try to resume from the last checkpoint
     # if you are saving for every epoch, you can skip the part about
@@ -362,66 +366,10 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        '--state_type',
+        '--config_file',
         type=str,
-        help='options: ["vision", "sensor"]',
-        default= 'vision'
-    )
-
-    parser.add_argument(
-        '--action_type',
-        type=str,
-        help='options: ["primitive", "sln"]',
-        default= 'sln'
-    )
-
-    parser.add_argument(
-        '--model',
-        type=str,
-        help='options: ["resnet", "densenet"]',
-        default='resnet'
-    )
-
-    parser.add_argument(
-        '--num_epoch',
-        type=int,
-        help='number of epochs to run',
-        default=50
-    )
-
-    parser.add_argument(
-        '--checkpoint_path',
-        type=str,
-        help='path to save and look for the checkpoint file',
-        default=os.path.join(os.getcwd(), "checkpoint/checkpoint.pt")
-    )
-
-    parser.add_argument(
-        '--batch_size',
-        type=int,
-        help='batch size per iteration',
-        default=8#64
-    )
-
-    parser.add_argument(
-        '--checkpoint_interval',
-        type=int,
-        help='period to take checkpoints in seconds',
-        default=3600
-    )
-
-    parser.add_argument(
-        '--log_file',
-        type=str,
-        help='specify the loaction of the output directory, default stdout',
-        default=os.path.join(os.getcwd(), "train.log")
-    )
-
-    parser.add_argument(
-        '--environment',
-        type=int,
-        help='environment to simulate- 0: nav_obstacle, 1: push_empty, 2: push_empty_small',
-        default=2
+        help='path of the configuration file',
+        default= 'configurations/config_test.yml'
     )
 
     main(parser.parse_args())

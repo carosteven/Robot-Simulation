@@ -8,3 +8,4 @@ venv38/
 checkpoint/
 logs/
 __pycache__/
+model_weights/

@@ -1,0 +1,17 @@
+action_type: straight-line-navigation
+batch_size: 8
+checkpoint_interval: 3600
+checkpoint_path: checkpoint/checkpoint.pt
+environment: 2
+epsilon_end: 0.01
+epsilon_start: 1.0
+epsilon_steps: 200000
+gamma: 0.99
+log_file: logs/train.log
+lr: 0.0005
+model: resnet
+num_epochs: 50
+num_of_batches_before_train: 5
+replay_buffer_size: 10000
+state_type: vision
+target_update_freq: 20
