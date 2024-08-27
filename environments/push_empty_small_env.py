@@ -23,7 +23,7 @@ def distance(pos1, pos2):
     return abs(pos1 - pos2)
 
 class Push_Empty_Small_Env(object):
-    def __init__(self) -> None:
+    def __init__(self, config=None) -> None:
         self.state_type = 'vision'
         # Space
         self._space = pymunk.Space()
@@ -65,12 +65,12 @@ class Push_Empty_Small_Env(object):
         self.reward_from_last_action = 0
 
         # Rewards
-        self.collision_penalty = 10
-        self.action_penalty = 1
-        self.push_reward = 1
-        self.obj_to_goal_reward = 1000
-        self.exploration_reward = 0.1
-        self.partial_rewards_scale = 1
+        self.collision_penalty      = config['collision_penalty'] if config is not None else 10
+        self.action_penalty         = config['action_penalty'] if config is not None else 1
+        self.push_reward            = config['push_reward'] if config is not None else 1
+        self.obj_to_goal_reward     = config['obj_to_goal_reward'] if config is not None else 1000
+        self.exploration_reward     = config['exploration_reward'] if config is not None else 0.1
+        self.partial_rewards_scale  = config['partial_rewards_scale'] if config is not None else 1
 
         # Available actions
         self.available_actions = ['forward', 'backward', 'turn_cw', 'turn_ccw']
@@ -521,8 +521,8 @@ class Push_Empty_Small_Env(object):
             reward += self.push_reward
             reward_tracker += ":push: "
         '''
-        if not self.is_pushing:
-            reward -= self.push_reward
+        if self.is_pushing:
+            reward += self.push_reward
             reward_tracker += ":no push: "
 
         if self._done:
@@ -546,7 +546,7 @@ class Push_Empty_Small_Env(object):
         cumulative_reward = self.reward
         reward_from_last_action = self.reward_from_last_action
         action_function = self.take_action
-        self.__init__()
+        self.__init__({'collision_penalty': self.collision_penalty, 'action_penalty': self.action_penalty, 'push_reward': self.push_reward, 'obj_to_goal_reward': self.obj_to_goal_reward, 'exploration_reward': self.exploration_reward, 'partial_rewards_scale': self.partial_rewards_scale})
         self.reward = cumulative_reward
         self.reward_from_last_action = reward_from_last_action
         self.take_action = action_function

@@ -1,6 +1,6 @@
 action_type: straight-line-navigation
-batch_size: 8
-checkpoint_interval: 3600
+batch_size: 128
+checkpoint_interval: 3000
 checkpoint_path: checkpoint/checkpoint.pt
 environment: 2
 epsilon_end: 0.01
@@ -10,8 +10,17 @@ gamma: 0.99
 log_file: logs/train.log
 lr: 0.0005
 model: resnet
+no_push_timeout: 200
 num_epochs: 50
 num_of_batches_before_train: 5
 replay_buffer_size: 10000
 state_type: vision
 target_update_freq: 20
+
+# Rewards
+collision_penalty:      10
+action_penalty:         0
+push_reward:            1
+obj_to_goal_reward:     1000
+exploration_reward:     0.1
+partial_rewards_scale:  1

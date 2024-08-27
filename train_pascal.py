@@ -52,6 +52,7 @@ class Train_DQL():
         self.action_type = config['action_type']
         self.checkpoint_path = config['checkpoint_path']
         self.checkpoint_interval = config['checkpoint_interval']
+        self.no_push_timeout = config['no_push_timeout']
         self.num_epochs = config['num_epochs']
         self.num_of_batches_before_train = config['num_of_batches_before_train']
         # Get number of actions from env
@@ -238,7 +239,7 @@ class Train_DQL():
         self.target_net = self.target_net.to(self.device)
         self.optimizer_to_dev()
 
-        for epoch in tqdm(range(self.num_epoch)):
+        for epoch in tqdm(range(self.num_epochs)):
             # Reset environment and get new state
             self.state = torch.tensor(env.reset(), dtype=torch.int32, device=self.device).unsqueeze(0)
             self.contact_made = False
@@ -263,12 +264,12 @@ class Train_DQL():
                 if env.is_pushing:
                     self.last_epi_contact_made = epi
 
-                if epi > self.last_epi_contact_made + 2000: # Make this a parameter
+                if epi > self.last_epi_contact_made + self.no_push_timeout:
                     done = True
                     logging.info("No contact made. Resetting environment...")
 
                 if done:
-                    if epi <= self.last_epi_contact_made + 2000:
+                    if epi <= self.last_epi_contact_made + self.no_push_timeout:
                         logging.info("Object in receptacle. Resetting environment...")
                     break
 
@@ -279,8 +280,10 @@ class Train_DQL():
         action = np.unravel_index(self.action[0,0].cpu(), (int(env.screen_size[0]/2), int(env.screen_size[1]/2)))
         action = (action[0]*2, action[1]*2)
 
+        total_reward = 0
         while not env.action_completed:
             observation, reward, done, _ = env.step(action)
+            total_reward += reward
         env.action_completed = False
 
         if done:
@@ -288,8 +291,8 @@ class Train_DQL():
         else:
             self.next_state = torch.tensor(observation, dtype=torch.int32, device=self.device).unsqueeze(0)
             
-        reward = torch.tensor([reward], device=self.device)
-        self.memory.push(self.state, self.action, self.next_state, reward)
+        total_reward = torch.tensor([total_reward], device=self.device)
+        self.memory.push(self.state, self.action, self.next_state, total_reward)
 
         self.state = self.next_state
     
@@ -340,11 +343,11 @@ def main(args):
     
     logging.info("starting training script")
 
-    env = environments.selector(config['environment'])
+    env = environments.selector(config)
     env.state_type = config['state_type']
     if config['action_type'] == 'primitive':
         env.take_action = env._actions
-    elif config['action_type'] == 'sln':
+    elif config['action_type'] == 'straight-line-navigation':
         env.take_action = env.straight_line_navigation
     
 
@@ -369,7 +372,7 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        default= 'configurations/config_test.yml'
+        default= 'configurations/config_push_small_sln.yml'
     )
 
     main(parser.parse_args())
