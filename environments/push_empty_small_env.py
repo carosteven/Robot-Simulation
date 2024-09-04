@@ -7,6 +7,7 @@ import pymunk.pygame_util
 import numpy as np
 from PIL import Image
 from skimage.transform import resize, rescale
+import yaml
 
 def limit_velocity(body, gravity, damping, dt):
         max_velocity = 100
@@ -27,7 +28,7 @@ class Push_Empty_Small_Env(object):
         self.config = config
 
         self.state_type = config['state_type'] if config is not None else 'vision'
-        self.MINISTEP_SIZE = config['ministep_size']            # Scaling for distance moved by agent
+        # self.MINISTEP_SIZE = config['ministep_size']            # Scaling for distance moved by agent
 
         # Space
         self._space = pymunk.Space()
@@ -52,12 +53,16 @@ class Push_Empty_Small_Env(object):
         # Static barrier walls (lines) that the balls bounce off of
         self._add_static_scenery()
         
-        # The object to be pushed
-        self._object = self._create_object(radius=15, mass=5, position=tuple([c/2 for c in self.screen_size]), damping=.99)
+        # The objects to be pushed
+        self.num_boxes = config['num_boxes'] if config is not None else 1
+        self._boxes = []
+        for i in range(self.num_boxes):
+            self._boxes.append(self._create_object(id=i, radius=15, mass=5, position=(random.randint(65,200), random.randint(150,250)), damping=.99))
+        # self._object = self._create_object(radius=15, mass=5, position=tuple([c/2 for c in self.screen_size]), damping=.99)
 
         # The agent to be controlled
         y_pos = random.randint(50,self.screen_size[1]-50)
-        self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(self.screen_size[0]*0.75, y_pos), damping=0.99)
+        self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(self.screen_size[0]*0.8, y_pos), damping=0.99)
         self.initial_agent_pos = self._agent['robot'].position
 
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
@@ -88,7 +93,8 @@ class Push_Empty_Small_Env(object):
         self.action_completed = False
 
         self.goal_position = (25,75)
-        self.initial_object_dist = distance(self._object.position, self.goal_position)
+        self.initial_box_dists = [distance(box.position, self.goal_position) for box in self._boxes]
+        # self.initial_object_dist = distance(self._object.position, self.goal_position)
 
         # Collision Handling
         # Robot: 0, Obstacles: 1, Goal: 2, Object: 3
@@ -148,7 +154,7 @@ class Push_Empty_Small_Env(object):
 
         self._space.add(*static_goal)
 
-    def _create_object(self, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
+    def _create_object(self, id: int, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
         """
         Create the object to be pushed
         :return: Pymunk Polygon
@@ -156,10 +162,11 @@ class Push_Empty_Small_Env(object):
         object_body = pymunk.Body()
         object_body.position = position
         object_body.damping = damping
+        object_body.label = 'box_'+str(id)
         object_body.velocity_func = custom_damping
         
         object = pymunk.Poly(object_body, ((-radius, -radius), (-radius, radius), (radius, radius), (radius, -radius)))
-        object.label = 'object'
+        object.color = (255, 0, 0, 255)
         object.mass = mass
         object.elasticity = elasticity
         object.friction = friction
@@ -262,7 +269,7 @@ class Push_Empty_Small_Env(object):
             # Calculate reward
             # robot_reward = self.get_reward()
             # self.reward += robot_reward
-            # print(f'{self.reward} \t\t\t\t {self.reward_from_last_action}', end='\r')
+            # print(self.reward_from_last_action)
             
             if self._done:
                 self.reset()
@@ -504,7 +511,14 @@ class Push_Empty_Small_Env(object):
     
     def collision_obj_goal(self, arbiter, space, dummy):
         shapes = arbiter.shapes
-        self._done = True
+        for i, box in enumerate(self._boxes):
+            if box.label == shapes[0].body.label:
+                print(f'{box.label} in goal')
+                self._boxes.pop(i)
+                self._space.remove(shapes[0], shapes[0].body)
+                break
+        if len(self._boxes) == 0:
+            self._done = True
         return True
 
     def get_state(self):
@@ -540,8 +554,8 @@ class Push_Empty_Small_Env(object):
             reward += self.push_reward
             reward_tracker += ":no push: "
 
-        if self._done:
-            reward += self.obj_to_goal_reward
+        reward += (self.num_boxes-len(self._boxes))*self.obj_to_goal_reward
+        self.num_boxes = len(self._boxes)
         
         '''
         if not self.is_pushing and not self.collision_occuring and action_taken:
@@ -550,10 +564,16 @@ class Push_Empty_Small_Env(object):
         '''
         # print(reward_tracker, self.reward_from_last_action)
 
-        dist = distance(self._object.position, self.goal_position)
-        dist_moved = self.initial_object_dist - dist
-        self.initial_object_dist = dist
-        reward += self.partial_rewards_scale*dist_moved
+        # Calculate reward for pushing object closer to goal
+        for i, box in enumerate(self._boxes):
+            dist = distance(box.position, self.goal_position)
+            dist_moved = self.initial_box_dists[i] - dist
+            self.initial_box_dists[i] = dist
+            reward += self.partial_rewards_scale*dist_moved
+        # dist = distance(self._object.position, self.goal_position)
+        # dist_moved = self.initial_object_dist - dist
+        # self.initial_object_dist = dist
+        # reward += self.partial_rewards_scale*dist_moved
 
         return reward
     
@@ -571,10 +591,11 @@ class Push_Empty_Small_Env(object):
         self._running = False
 
 def main():
-    game = Push_Empty_Small_Env()
+    config_path = 'configurations/config_test.yml'
+    with open(config_path) as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
+    game = Push_Empty_Small_Env(config)
     game.run()
-    # img = Image.fromarray(game.state2)
-    # img.show()
 
 if __name__ == "__main__":
     main()

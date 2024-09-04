@@ -12,6 +12,7 @@ lr: 0.0005
 ministep_size: 0.25
 model: resnet
 no_push_timeout: 2000
+num_boxes: 5
 num_epochs: 50
 num_of_batches_before_train: 5
 replay_buffer_size: 10000
