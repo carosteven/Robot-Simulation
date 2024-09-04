@@ -28,7 +28,7 @@ from PIL import Image
 env = None
 
 Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
+                        ('state', 'action', 'next_state', 'reward', 'distance'))
 
 
 
@@ -169,8 +169,9 @@ class Train_DQL():
 
         return action
     
-    def transform_state(self, state_batch):
+    def transform_state(self, state_batch): #TODO check if transforming state before storing in memory is more efficient
         colour_batch = torch.zeros((state_batch.shape[0], 3, state_batch.shape[2], state_batch.shape[3]),device=self.device)
+        # print(state_batch[:,0])
         colour_batch[:,0] = torch.bitwise_right_shift(state_batch[:,0], 16)
         colour_batch[:,1] = torch.bitwise_right_shift(state_batch[:,0], 8&255)
         colour_batch[:,2] = torch.bitwise_and(state_batch[:,0], 255)
@@ -186,30 +187,20 @@ class Train_DQL():
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                                 batch.next_state)), device=self.device, dtype=torch.bool)
         non_final_next_states = self.transform_state(torch.cat([s for s in batch.next_state if s is not None]))
-        state_batch = self.transform_state(torch.cat(batch.state))
-        action_batch = torch.cat(batch.action)
-        reward_batch = torch.cat(batch.reward)
+        state_batch = self.transform_state(torch.cat(batch.state)).to(self.device)
+        action_batch = torch.cat(batch.action).to(self.device)
+        reward_batch = torch.cat(batch.reward).to(self.device)
+        distance_batch = torch.tensor(batch.distance, device=self.device, dtype=torch.float)
 
         # Get Q(s, a) for every (s, a) in the minibatch
         qvalues = self.policy_net(state_batch).gather(1, action_batch.view(-1, 1)).squeeze()
-
-        '''
-        # Get max_a' Qt(s', a') for every (s') in the minibatch
-        q2values = torch.zeros(self.BATCH_SIZE, device=self.device)
-        with torch.no_grad():
-            q2values[non_final_mask] = torch.max(self.target_net(non_final_next_states), dim = 1).values
-        
-        # q2value is zero when the state is final ^^
-        targets = reward_batch + self.GAMMA * q2values
-        '''
         
         # Double DQN Formula: r + gamma*TARGET(s_t+1, argmax_a POLICY(s_t+1, a))
-        # TODO why are q2values zero when the state is final?
         q_target_values = torch.zeros(self.BATCH_SIZE, device=self.device)
         with torch.no_grad():
             actions = torch.argmax(self.policy_net(non_final_next_states), dim=1)
             q_target_values[non_final_mask] = self.target_net(non_final_next_states).gather(1, actions.unsqueeze(1)).squeeze()
-        targets = reward_batch + self.GAMMA * q_target_values
+        targets = reward_batch + torch.pow(self.GAMMA, distance_batch) * q_target_values
 
         # Detach y since it is the target. Target values should
         # be kept fixed.
@@ -282,17 +273,17 @@ class Train_DQL():
 
         total_reward = 0
         while not env.action_completed:
-            observation, reward, done, _ = env.step(action)
+            next_state, reward, done, info = env.step(action)
             total_reward += reward
         env.action_completed = False
 
         if done:
             self.next_state = None
         else:
-            self.next_state = torch.tensor(observation, dtype=torch.int32, device=self.device).unsqueeze(0)
+            self.next_state = torch.tensor(next_state, dtype=torch.int32, device=self.device).unsqueeze(0)
             
         total_reward = torch.tensor([total_reward], device=self.device)
-        self.memory.push(self.state, self.action, self.next_state, total_reward)
+        self.memory.push(self.state, self.action, self.next_state, total_reward, info['distance'])
 
         self.state = self.next_state
     
@@ -313,11 +304,11 @@ class Train_DQL():
         
         elif frame % self.action_freq == self.action_freq - 1:
             # Store the transition in memory after reward has been accumulated
-            observation, reward, done, _ = env.step(None)
+            next_state, reward, done, _ = env.step(None)
             if done:
                 self.next_state = None
             else:
-                self.next_state = torch.tensor(observation, dtype=torch.int32, device=self.device).unsqueeze(0)
+                self.next_state = torch.tensor(next_state, dtype=torch.int32, device=self.device).unsqueeze(0)
                 
             reward = torch.tensor([reward], device=self.device)
             self.memory.push(self.state, self.action, self.next_state, reward)
@@ -372,7 +363,7 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        default= 'configurations/config_push_small_sln.yml'
+        default= 'configurations/config_test.yml'
     )
 
     main(parser.parse_args())

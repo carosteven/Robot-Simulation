@@ -1,10 +1,10 @@
 import torch
 from collections import namedtuple
 
-checkpoint_path = 'checkpoint/checkpoint_push.pt'
-model_path = 'model_push.pt'
+checkpoint_path = 'checkpoint/checkpoint-normal_rews.pt'
+model_path = 'model_weights/model_normal_rews.pt'
 Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
+                        ('state', 'action', 'next_state', 'reward', 'distance'))
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 checkpoint = torch.load(checkpoint_path, map_location=device)

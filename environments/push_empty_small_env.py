@@ -24,7 +24,11 @@ def distance(pos1, pos2):
 
 class Push_Empty_Small_Env(object):
     def __init__(self, config=None) -> None:
-        self.state_type = 'vision'
+        self.config = config
+
+        self.state_type = config['state_type'] if config is not None else 'vision'
+        self.MINISTEP_SIZE = config['ministep_size']            # Scaling for distance moved by agent
+
         # Space
         self._space = pymunk.Space()
         self._space.gravity = (0.0, 0.0)
@@ -54,6 +58,7 @@ class Push_Empty_Small_Env(object):
         # The agent to be controlled
         y_pos = random.randint(50,self.screen_size[1]-50)
         self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(self.screen_size[0]*0.75, y_pos), damping=0.99)
+        self.initial_agent_pos = self._agent['robot'].position
 
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
@@ -287,11 +292,15 @@ class Push_Empty_Small_Env(object):
         # Calculate reward
         self.reward_from_last_action += self.get_reward(True if action is not None else False)
 
+        robot_distance = distance(self._agent['robot'].position, self.initial_agent_pos)
+        self.initial_agent_pos = self._agent['robot'].position
+
         # Items to return
         state = self.state
         reward = self.reward_from_last_action
         done = self._done
         info = {
+            'distance': robot_distance,
             'inactivity': None,
             'cumulative_cubes': 0,
             'cumulative_distance': 0,
@@ -546,9 +555,9 @@ class Push_Empty_Small_Env(object):
         cumulative_reward = self.reward
         reward_from_last_action = self.reward_from_last_action
         action_function = self.take_action
-        self.__init__({'collision_penalty': self.collision_penalty, 'action_penalty': self.action_penalty, 'push_reward': self.push_reward, 'obj_to_goal_reward': self.obj_to_goal_reward, 'exploration_reward': self.exploration_reward, 'partial_rewards_scale': self.partial_rewards_scale})
+        self.__init__(self.config)
         self.reward = cumulative_reward
-        self.reward_from_last_action = reward_from_last_action
+        # self.reward_from_last_action = reward_from_last_action
         self.take_action = action_function
         return self.state
         
