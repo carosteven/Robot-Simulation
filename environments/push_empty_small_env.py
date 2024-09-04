@@ -63,7 +63,13 @@ class Push_Empty_Small_Env(object):
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
 
-        self.take_action = None
+        if config['action_type'] == 'straight-line-navigation':
+            self.take_action = self.straight_line_navigation
+        elif config['action_type'] == 'action-control':
+            self.take_action = self._actions
+        else:
+            self.take_action = None
+
 
         # Agent cumulative rewards
         self.reward = 0
