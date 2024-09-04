@@ -5,13 +5,13 @@ checkpoint_path: checkpoint/checkpoint.pt
 environment: 2
 epsilon_end: 0.01
 epsilon_start: 1.0
-epsilon_steps: 200000
+epsilon_steps: 15000
 gamma: 0.99
 log_file: logs/train.log
 lr: 0.0005
 model: resnet
-no_push_timeout: 200
-num_epochs: 50
+no_push_timeout: 250
+num_epochs: 100
 num_of_batches_before_train: 5
 replay_buffer_size: 10000
 state_type: vision

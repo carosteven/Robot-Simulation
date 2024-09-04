@@ -58,7 +58,13 @@ class Push_Empty_Small_Env(object):
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
 
-        self.take_action = None
+        if config['action_type'] == 'straight-line-navigation':
+            self.take_action = self.straight_line_navigation
+        elif config['action_type'] == 'action-control':
+            self.take_action = self._actions
+        else:
+            self.take_action = None
+
 
         # Agent cumulative rewards
         self.reward = 0
@@ -546,7 +552,8 @@ class Push_Empty_Small_Env(object):
         cumulative_reward = self.reward
         reward_from_last_action = self.reward_from_last_action
         action_function = self.take_action
-        self.__init__({'collision_penalty': self.collision_penalty, 'action_penalty': self.action_penalty, 'push_reward': self.push_reward, 'obj_to_goal_reward': self.obj_to_goal_reward, 'exploration_reward': self.exploration_reward, 'partial_rewards_scale': self.partial_rewards_scale})
+        ########################################################################
+        self.__init__({'action_type': 'straight-line-navigation', 'collision_penalty': self.collision_penalty, 'action_penalty': self.action_penalty, 'push_reward': self.push_reward, 'obj_to_goal_reward': self.obj_to_goal_reward, 'exploration_reward': self.exploration_reward, 'partial_rewards_scale': self.partial_rewards_scale})
         self.reward = cumulative_reward
         self.reward_from_last_action = reward_from_last_action
         self.take_action = action_function
