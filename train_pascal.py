@@ -52,7 +52,7 @@ class Train_DQL():
         self.action_type = config['action_type']
         self.checkpoint_path = config['checkpoint_path']
         self.checkpoint_interval = config['checkpoint_interval']
-        self.no_push_timeout = config['no_push_timeout']
+        self.no_goal_timeout = config['no_goal_timeout']
         self.num_epochs = config['num_epochs']
         self.num_of_batches_before_train = config['num_of_batches_before_train']
         # Get number of actions from env
@@ -82,7 +82,7 @@ class Train_DQL():
 
         self.steps_done = 0 # for exploration
         self.contact_made = False # end episode if agent does not push box after x actions
-        self.last_epi_contact_made = 0
+        self.last_epi_box_in_goal = 0
 
     def create_or_restore_training_state(self, state_type, model, buffer_size):
         if state_type == 'vision':
@@ -252,16 +252,16 @@ class Train_DQL():
                     self.commit_state()
                     start_time = cur_time
                 
-                if env.is_pushing:
-                    self.last_epi_contact_made = epi
+                # if env.is_pushing:
+                #     self.last_epi_box_in_goal = epi
 
-                if epi > self.last_epi_contact_made + self.no_push_timeout:
+                if epi > self.last_epi_box_in_goal + self.no_goal_timeout:
                     done = True
-                    logging.info("No contact made. Resetting environment...")
+                    logging.info(f"Inactivity timeout. {env.num_boxes} in goal. Resetting environment...")
 
                 if done:
-                    if epi <= self.last_epi_contact_made + self.no_push_timeout:
-                        logging.info("Object in receptacle. Resetting environment...")
+                    if epi <= self.last_epi_box_in_goal + self.no_goal_timeout:
+                        logging.info("All boxes in receptacle. Resetting environment...")
                     break
 
             self.epoch += 1
@@ -275,6 +275,9 @@ class Train_DQL():
         while not env.action_completed:
             next_state, reward, done, info = env.step(action)
             total_reward += reward
+            if env.boxes_in_goal != 0:
+                logging.info(f"{env.boxes_in_goal} boxes added to receptacle.")
+                self.last_epi_box_in_goal = epi
         env.action_completed = False
 
         if done:

@@ -440,7 +440,9 @@ class Push_Empty_Small_Env(object):
 
     def straight_line_navigation(self, coords) -> bool:
         if self.collision_occuring or (self.obj_coll_obst and self.is_pushing) or self._done:
+            self._actions('backward')
             return True
+        
         # Get the heading of the robot
         angle = (self._agent['robot'].angle - (np.pi/2)) % (2*np.pi)
 
@@ -513,7 +515,6 @@ class Push_Empty_Small_Env(object):
         shapes = arbiter.shapes
         for i, box in enumerate(self._boxes):
             if box.label == shapes[0].body.label:
-                print(f'{box.label} in goal')
                 self._boxes.pop(i)
                 self._space.remove(shapes[0], shapes[0].body)
                 break
@@ -554,7 +555,8 @@ class Push_Empty_Small_Env(object):
             reward += self.push_reward
             reward_tracker += ":no push: "
 
-        reward += (self.num_boxes-len(self._boxes))*self.obj_to_goal_reward
+        self.boxes_in_goal = self.num_boxes-len(self._boxes)
+        reward += (self.boxes_in_goal)*self.obj_to_goal_reward
         self.num_boxes = len(self._boxes)
         
         '''
