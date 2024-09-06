@@ -243,7 +243,7 @@ class Push_Empty_Small_Env(object):
 
             action = self._process_events()
             self._actions(action)
-            coord = (200,75)
+            coord = (200,0)
             if not reached_loc:
                 reached_loc = self.straight_line_navigation(coord)
             self._update()
@@ -295,7 +295,7 @@ class Push_Empty_Small_Env(object):
         pygame.display.flip()
         
         # Delay fixed time between frames
-        self._clock.tick(230)
+        self._clock.tick(110)
         pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
 
         if action is not None:
@@ -463,7 +463,7 @@ class Push_Empty_Small_Env(object):
             if abs(dist) > 5:
                 self._actions('forward')
 
-        elif abs(angle + np.pi - angle_to_coords) < 0.1: # robot gets stuck if over coord, so push it backward a bit
+        elif abs((angle + np.pi) % (2*np.pi) - angle_to_coords) < 0.1 and dist < 50: # robot gets stuck if over coord, so push it backward a bit
             self._actions('backward')
         
         # Adjust heading of robot using actions to minimize the angle between the robot and the coordinates
@@ -516,6 +516,7 @@ class Push_Empty_Small_Env(object):
         for i, box in enumerate(self._boxes):
             if box.label == shapes[0].body.label:
                 self._boxes.pop(i)
+                self.initial_box_dists.pop(i)
                 self._space.remove(shapes[0], shapes[0].body)
                 break
         if len(self._boxes) == 0:
@@ -545,15 +546,10 @@ class Push_Empty_Small_Env(object):
         if self.collision_occuring:
             reward -= self.collision_penalty
             reward_tracker += ":collision penalty: "
-        
-        '''
+
         if self.is_pushing:
             reward += self.push_reward
             reward_tracker += ":push: "
-        '''
-        if self.is_pushing:
-            reward += self.push_reward
-            reward_tracker += ":no push: "
 
         self.boxes_in_goal = self.num_boxes-len(self._boxes)
         reward += (self.boxes_in_goal)*self.obj_to_goal_reward
