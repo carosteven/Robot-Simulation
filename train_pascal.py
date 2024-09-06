@@ -257,7 +257,7 @@ class Train_DQL():
 
                 if epi > self.last_epi_box_in_goal + self.no_goal_timeout:
                     done = True
-                    logging.info(f"Inactivity timeout. {env.num_boxes} in goal. Resetting environment...")
+                    logging.info(f"Inactivity timeout. {env.config['num_boxes'] - env.boxes_remaining} in goal. Resetting environment...")
 
                 if done:
                     if epi <= self.last_epi_box_in_goal + self.no_goal_timeout:

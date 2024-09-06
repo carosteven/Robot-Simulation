@@ -54,9 +54,9 @@ class Push_Empty_Small_Env(object):
         self._add_static_scenery()
         
         # The objects to be pushed
-        self.num_boxes = config['num_boxes'] if config is not None else 1
+        self.boxes_remaining = config['num_boxes'] if config is not None else 1
         self._boxes = []
-        for i in range(self.num_boxes):
+        for i in range(self.boxes_remaining):
             self._boxes.append(self._create_object(id=i, radius=15, mass=5, position=(random.randint(65,200), random.randint(150,250)), damping=.99))
         # self._object = self._create_object(radius=15, mass=5, position=tuple([c/2 for c in self.screen_size]), damping=.99)
 
@@ -555,9 +555,9 @@ class Push_Empty_Small_Env(object):
             reward += self.push_reward
             reward_tracker += ":no push: "
 
-        self.boxes_in_goal = self.num_boxes-len(self._boxes)
+        self.boxes_in_goal = self.boxes_remaining-len(self._boxes)
         reward += (self.boxes_in_goal)*self.obj_to_goal_reward
-        self.num_boxes = len(self._boxes)
+        self.boxes_remaining = len(self._boxes)
         
         '''
         if not self.is_pushing and not self.collision_occuring and action_taken:
