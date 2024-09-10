@@ -12,9 +12,11 @@ lr: 0.0005
 ministep_size: 0.25
 model: resnet
 no_goal_timeout: 250
-num_epochs: 100
 num_boxes: 5
-num_of_batches_before_train: 1000
+num_epochs: 100
+num_of_batches_before_train: 1
+num_policies: 1
+options: False
 replay_buffer_size: 10000
 state_type: vision
 target_update_freq: 1000
