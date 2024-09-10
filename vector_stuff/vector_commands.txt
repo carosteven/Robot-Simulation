@@ -1,6 +1,9 @@
 ## SSH to device
 ssh steve22@v.vectorinstitute.ai
 
+## Check storage
+cat ~/.usage
+
 ## Check/load available modules
 module avail
 module load python/3.9.10

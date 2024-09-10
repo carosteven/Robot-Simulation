@@ -20,13 +20,6 @@ state_type: vision
 target_update_freq: 1000
 
 # Rewards
-# collision_penalty:      10
-# action_penalty:         0
-# push_reward:            0
-# obj_to_goal_reward:     100
-# exploration_reward:     0
-# partial_rewards_scale:  4
-
 collision_penalty:      0.25
 action_penalty:         0
 push_reward:            0
