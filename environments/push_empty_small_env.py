@@ -7,6 +7,7 @@ import pymunk.pygame_util
 import numpy as np
 from PIL import Image
 from skimage.transform import resize, rescale
+import yaml
 
 def limit_velocity(body, gravity, damping, dt):
         max_velocity = 100
@@ -23,8 +24,12 @@ def distance(pos1, pos2):
     return abs(pos1 - pos2)
 
 class Push_Empty_Small_Env(object):
-    def __init__(self) -> None:
-        self.state_type = 'vision'
+    def __init__(self, config=None) -> None:
+        self.config = config
+
+        self.state_type = config['state_type'] if config is not None else 'vision'
+        # self.MINISTEP_SIZE = config['ministep_size']            # Scaling for distance moved by agent
+
         # Space
         self._space = pymunk.Space()
         self._space.gravity = (0.0, 0.0)
@@ -38,7 +43,7 @@ class Push_Empty_Small_Env(object):
         # pygame
         pygame.display.init()
         pygame.font.init()
-        self.screen_size = (300,300)
+        self.screen_size = (304,304)
         self._screen = pygame.display.set_mode(self.screen_size)
         self._clock = pygame.time.Clock()
 
@@ -48,30 +53,48 @@ class Push_Empty_Small_Env(object):
         # Static barrier walls (lines) that the balls bounce off of
         self._add_static_scenery()
         
-        # The object to be pushed
-        self._object = self._create_object(radius=15, mass=5, position=tuple([c/2 for c in self.screen_size]), damping=.99)
+        # The objects to be pushed
+        self.boxes_remaining = config['num_boxes'] if config is not None else 1
+        self._boxes = []
+        for i in range(self.boxes_remaining):
+            self._boxes.append(self._create_object(id=i, radius=15, mass=5, position=(random.randint(65,200), random.randint(150,250)), damping=.99))
+        # self._object = self._create_object(radius=15, mass=5, position=tuple([c/2 for c in self.screen_size]), damping=.99)
 
         # The agent to be controlled
         y_pos = random.randint(50,self.screen_size[1]-50)
-        self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(self.screen_size[0]*0.75, y_pos), damping=0.99)
-        for key in self._agent:
-            self._agent[key].score = 0
+        self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(self.screen_size[0]*0.8, y_pos), damping=0.99)
+        self.initial_agent_pos = self._agent['robot'].position
 
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
 
+        if config['action_type'] == 'straight-line-navigation':
+            self.take_action = self.straight_line_navigation
+        elif config['action_type'] == 'action-control':
+            self.take_action = self._actions
+        else:
+            self.take_action = None
+
+
+        # Agent cumulative rewards
+        self.reward = 0
+        self.reward_from_last_action = 0
+
         # Rewards
-        self.collision_penalty = 25
-        self.action_penalty = 1
-        self.push_reward = 30
-        self.obj_to_goal_reward = 1000
-        self.partial_rewards_scale = 10
+        self.collision_penalty      = config['collision_penalty'] if config is not None else 10
+        self.action_penalty         = config['action_penalty'] if config is not None else 1
+        self.push_reward            = config['push_reward'] if config is not None else 1
+        self.obj_to_goal_reward     = config['obj_to_goal_reward'] if config is not None else 1000
+        self.exploration_reward     = config['exploration_reward'] if config is not None else 0.1
+        self.partial_rewards_scale  = config['partial_rewards_scale'] if config is not None else 1
 
         # Available actions
         self.available_actions = ['forward', 'backward', 'turn_cw', 'turn_ccw']
+        self.action_completed = False
 
         self.goal_position = (25,75)
-        self.initial_object_dist = distance(self._object.position, self.goal_position)
+        self.initial_box_dists = [distance(box.position, self.goal_position) for box in self._boxes]
+        # self.initial_object_dist = distance(self._object.position, self.goal_position)
 
         # Collision Handling
         # Robot: 0, Obstacles: 1, Goal: 2, Object: 3
@@ -109,6 +132,10 @@ class Push_Empty_Small_Env(object):
             pymunk.Segment(static_body, (0,0), (self.screen_size[0],0), 1),
             pymunk.Segment(static_body, (self.screen_size[0]-1,0), (self.screen_size[0]-1,self.screen_size[1]-1), 1),
             pymunk.Segment(static_body, (0,self.screen_size[1]-1), (self.screen_size[0]-1,self.screen_size[1]-1), 1),
+
+            pymunk.Segment(static_body, (self.screen_size[0]*0.9,0), (self.screen_size[0],self.screen_size[1]*0.1), 1),
+            pymunk.Segment(static_body, (self.screen_size[0]*0.9,self.screen_size[1]), (self.screen_size[0],self.screen_size[1]*0.9), 1),
+            pymunk.Segment(static_body, (0,self.screen_size[1]*0.9), (self.screen_size[0]*0.1,self.screen_size[1]), 1),
         ]
         for line in static_border:
             line.elasticity = 0.95
@@ -127,7 +154,7 @@ class Push_Empty_Small_Env(object):
 
         self._space.add(*static_goal)
 
-    def _create_object(self, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
+    def _create_object(self, id: int, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
         """
         Create the object to be pushed
         :return: Pymunk Polygon
@@ -135,10 +162,11 @@ class Push_Empty_Small_Env(object):
         object_body = pymunk.Body()
         object_body.position = position
         object_body.damping = damping
+        object_body.label = 'box_'+str(id)
         object_body.velocity_func = custom_damping
         
         object = pymunk.Poly(object_body, ((-radius, -radius), (-radius, radius), (radius, radius), (radius, -radius)))
-        object.label = 'object'
+        object.color = (255, 0, 0, 255)
         object.mass = mass
         object.elasticity = elasticity
         object.friction = friction
@@ -207,14 +235,21 @@ class Push_Empty_Small_Env(object):
         :return: None
         """
         # Main Loop
+        reached_loc = False
         while self._running:
             # Progress time forward
             for x in range(self._physics_steps_per_frame):
                 self._space.step(self._dt)
 
-            self._process_events()
+            action = self._process_events()
+            self._actions(action)
+            coord = (200,0)
+            if not reached_loc:
+                reached_loc = self.straight_line_navigation(coord)
             self._update()
             self._clear_screen()
+            # make a dot where the coord is
+            pygame.draw.circle(self._screen, (0,0,0), coord, 5)
             self._draw_objects()
             self.get_state()
             
@@ -223,10 +258,18 @@ class Push_Empty_Small_Env(object):
             self._clock.tick(110)
             pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
 
+            if action is not None:
+                self.reward += self.reward_from_last_action
+                self.reward_from_last_action = 0
+
             # Calculate reward
-            robot_reward = self.get_reward()
-            self._agent['robot'].score += robot_reward
-            print(self._agent['robot'].score, end='\r')
+            self.reward_from_last_action += self.get_reward(True if action is not None else False)
+            # self.reward = self.get_reward(True if action is not None else False)
+
+            # Calculate reward
+            # robot_reward = self.get_reward()
+            # self.reward += robot_reward
+            # print(self.reward_from_last_action)
             
             if self._done:
                 self.reset()
@@ -242,7 +285,8 @@ class Push_Empty_Small_Env(object):
             self._space.step(self._dt)
 
         self._process_events()
-        self._actions(action)
+        # self._actions(action)
+        self.action_completed = self.take_action(action)
         self._update()
         self._clear_screen()
         self._draw_objects()
@@ -251,30 +295,39 @@ class Push_Empty_Small_Env(object):
         pygame.display.flip()
         
         # Delay fixed time between frames
-        self._clock.tick(230)
+        self._clock.tick(110)
         pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
 
+        if action is not None:
+            self.reward += self.reward_from_last_action
+            self.reward_from_last_action = 0
+
         # Calculate reward
-        robot_reward = self.get_reward()
-        self._agent['robot'].score += robot_reward
+        self.reward_from_last_action += self.get_reward(True if action is not None else False)
+
+        robot_distance = distance(self._agent['robot'].position, self.initial_agent_pos)
+        self.initial_agent_pos = self._agent['robot'].position
 
         # Items to return
         state = self.state
-        reward = robot_reward
+        reward = self.reward_from_last_action
         done = self._done
         info = {
+            'distance': robot_distance,
             'inactivity': None,
             'cumulative_cubes': 0,
             'cumulative_distance': 0,
-            'cumulative_reward': self._agent['robot'].score
+            'cumulative_reward': self.reward
         }
+
         return state, reward, done, info
     
-    def _process_events(self) -> None:
+    def _process_events(self) -> str:
         """
         Handle game and events like keyboard input. Call once per frame only.
         :return: None
         """
+        action = None
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self._running = False
@@ -290,13 +343,14 @@ class Push_Empty_Small_Env(object):
                         self._actions('rot_ccw')
                 else:
                     if keys[pygame.K_UP]:
-                        self._actions('forward')
+                        action = 'forward'
                     elif keys[pygame.K_DOWN]:
-                        self._actions('backward')
+                        action = 'backward'
                     elif keys[pygame.K_LEFT]:
-                        self._actions('turn_ccw')
+                        action = 'turn_ccw'
                     elif keys[pygame.K_RIGHT]:
-                        self._actions('turn_cw')
+                        action = 'turn_cw'
+        return action
     
     def _update(self) -> None:
         if self._agent['wheel_1'].latch:
@@ -345,10 +399,10 @@ class Push_Empty_Small_Env(object):
         """
         self._space.debug_draw(self._draw_options)
 
-    def _actions(self, action) -> None:
+    def _actions(self, action) -> bool:
         """
         action: 'forward', 'backward', 'turn_cw', 'turn_ccw'
-        :return: None
+        :return: action_completed
         """
         if action == 'forward':
             self._agent['wheel_1'].velocity += self._agent['wheel_1'].rotation_vector.perpendicular() * -50
@@ -381,6 +435,51 @@ class Push_Empty_Small_Env(object):
             self._agent['wheel_2'].velocity += self._agent['wheel_2'].rotation_vector.perpendicular() * -50
             self._agent['wheel_2'].latch = True
             self._agent['wheel_2'].forward = True
+        
+        return True
+
+    def straight_line_navigation(self, coords) -> bool:
+        if self.collision_occuring or (self.obj_coll_obst and self.is_pushing) or self._done:
+            self._actions('backward')
+            return True
+        
+        # Get the heading of the robot
+        angle = (self._agent['robot'].angle - (np.pi/2)) % (2*np.pi)
+
+        # Get the angle between the front of the robot and the coordinates
+        front_x = self._agent['robot'].local_to_world((0, -25)).x
+        front_y = self._agent['robot'].local_to_world((0, -25)).y
+        angle_to_coords = np.arctan2(coords[1] - front_y, coords[0] - front_x) % (2*np.pi)
+
+        # Get the distance between the front of the robot and the coordinates
+        dist = distance(pymunk.vec2d.Vec2d(front_x, front_y), coords)
+        
+        # If the robot is close enough to the coordinates, stop
+        if dist < 5:
+            return True
+        
+        # If the robot heading is close enough to the coordinates, move forward to minimize the distance
+        elif abs(angle - angle_to_coords) < 0.1:
+            if abs(dist) > 5:
+                self._actions('forward')
+
+        elif abs((angle + np.pi) % (2*np.pi) - angle_to_coords) < 0.1 and dist < 50: # robot gets stuck if over coord, so push it backward a bit
+            self._actions('backward')
+        
+        # Adjust heading of robot using actions to minimize the angle between the robot and the coordinates
+        elif angle_to_coords > angle:
+            if angle_to_coords - angle > np.pi:
+                self._actions('turn_ccw')
+            else:
+                self._actions('turn_cw')
+        else:
+            if angle - angle_to_coords > np.pi:
+                self._actions('turn_cw')
+            else:
+                self._actions('turn_ccw')
+        return False
+        
+
 
     def collision_begin(self, arbiter, space, dummy):
         shapes = arbiter.shapes
@@ -414,30 +513,24 @@ class Push_Empty_Small_Env(object):
     
     def collision_obj_goal(self, arbiter, space, dummy):
         shapes = arbiter.shapes
-        self._done = True
+        for i, box in enumerate(self._boxes):
+            if box.label == shapes[0].body.label:
+                self._boxes.pop(i)
+                self.initial_box_dists.pop(i)
+                self._space.remove(shapes[0], shapes[0].body)
+                break
+        if len(self._boxes) == 0:
+            self._done = True
         return True
 
     def get_state(self):
         """
         Gets integer pixel values from screen
         """
-        x,y = self._agent['robot'].position
-        x_low = round(x-100) if x-100 > 0 else 0
-        x_high = round(x+100) if x+100 < 600 else 600
-        y_low = round(y-100) if y-100 > 0 else 0
-        y_high = round(y+100) if y+100 < 600 else 600
+        self.state = (np.array(self.pxarr).astype(np.float64)/2e32).transpose()
+        self.state = np.resize(rescale(self.state, 0.5)*2e32, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
 
-        x_idx_high = x_high-x_low if x_high == 600 else 200
-        x_idx_low = 200-x_high if x_low == 0 else 0
-        y_idx_high = y_high-y_low if y_high == 600 else 200
-        y_idx_low = 200-y_high if y_low == 0 else 0
-        
-        # self.state = np.zeros((1,600,600))
-        # self.state[0,x_idx_low:x_idx_high, y_idx_low:y_idx_high] = np.array(self.pxarr[x_low:x_high,y_low:y_high]).astype('uint8')
-        self.state = np.array(self.pxarr).astype('uint8').transpose()
-        self.state = np.resize(rescale(self.state, 0.5)*255, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
-
-    def get_reward(self):
+    def get_reward(self, action_taken: bool):
         """
         Penalty for collision with walls
         Penalty for taking an action
@@ -445,38 +538,62 @@ class Push_Empty_Small_Env(object):
         Partial reward/penalty for pushing object closer to / further from goal
         """
         reward = 0
-        reward -= self.action_penalty
+        reward_tracker = ""
+        if action_taken:
+            reward -= self.action_penalty
+            reward_tracker += ":action penalty: "
 
         if self.collision_occuring:
             reward -= self.collision_penalty
-        
+            reward_tracker += ":collision penalty: "
+
         if self.is_pushing:
             reward += self.push_reward
-        
-        if self._done:
-            reward += self.obj_to_goal_reward
+            reward_tracker += ":push: "
 
-        dist = distance(self._object.position, self.goal_position)
-        dist_moved = self.initial_object_dist - dist
-        self.initial_object_dist = dist
-        reward += self.partial_rewards_scale*dist_moved
+        self.boxes_in_goal = self.boxes_remaining-len(self._boxes)
+        reward += (self.boxes_in_goal)*self.obj_to_goal_reward
+        self.boxes_remaining = len(self._boxes)
+        
+        '''
+        if not self.is_pushing and not self.collision_occuring and action_taken:
+            reward += self.exploration_reward # Small reward for diverse actions
+            reward_tracker += ":exploration:"
+        '''
+        # print(reward_tracker, self.reward_from_last_action)
+
+        # Calculate reward for pushing object closer to goal
+        for i, box in enumerate(self._boxes):
+            dist = distance(box.position, self.goal_position)
+            dist_moved = self.initial_box_dists[i] - dist
+            self.initial_box_dists[i] = dist
+            reward += self.partial_rewards_scale*dist_moved
+        # dist = distance(self._object.position, self.goal_position)
+        # dist_moved = self.initial_object_dist - dist
+        # self.initial_object_dist = dist
+        # reward += self.partial_rewards_scale*dist_moved
 
         return reward
     
     def reset(self):
-        cumulative_reward = self._agent['robot'].score
-        self.__init__()
-        self._agent['robot'].score = cumulative_reward
+        cumulative_reward = self.reward
+        reward_from_last_action = self.reward_from_last_action
+        action_function = self.take_action
+        self.__init__(self.config)
+        self.reward = cumulative_reward
+        # self.reward_from_last_action = reward_from_last_action
+        self.take_action = action_function
         return self.state
         
     def close(self):
         self._running = False
 
 def main():
-    game = Push_Empty_Small_Env()
+    config_path = 'configurations/config_test.yml'
+    with open(config_path) as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
+    game = Push_Empty_Small_Env(config)
     game.run()
-    # img = Image.fromarray(game.state2)
-    # img.show()
 
 if __name__ == "__main__":
     main()

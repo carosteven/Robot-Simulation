@@ -4,5 +4,8 @@ venv38/
 *.pt
 *.out
 *.log
+*.pyc
 checkpoint/
 logs/
+__pycache__/
+model_weights/
