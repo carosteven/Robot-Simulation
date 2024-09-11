@@ -53,17 +53,33 @@ class Push_Empty_Small_Env(object):
         # Static barrier walls (lines) that the balls bounce off of
         self._add_static_scenery()
         
+        self.goal_position = (25,75)
+        # self.initial_box_dists = [distance(box.position, self.goal_position) for box in self._boxes]
+        # self.initial_object_dist = distance(self._object.position, self.goal_position)
+
         # The objects to be pushed
         self.boxes_remaining = config['num_boxes'] if config is not None else 1
-        self._boxes = []
+        self._boxes = {}
         for i in range(self.boxes_remaining):
-            self._boxes.append(self._create_object(id=i, radius=15, mass=5, position=(random.randint(65,200), random.randint(150,250)), damping=.99))
+            self._boxes[f'{i}'] = {}
+            self._boxes[f'{i}']['body'] = self._create_object(id=i, radius=15, mass=5, position=(random.randint(65,200), random.randint(150,250)), damping=.99)
+            self._boxes[f'{i}']['initial_dist'] = distance(self._boxes[f'{i}']['body'].position, self.goal_position)
+            self._boxes[f'{i}']['collision_occuring'] = False
+            self._boxes[f'{i}']['push_occuring'] = False
+
         # self._object = self._create_object(radius=15, mass=5, position=tuple([c/2 for c in self.screen_size]), damping=.99)
 
         # The agent to be controlled
         y_pos = random.randint(50,self.screen_size[1]-50)
         self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(self.screen_size[0]*0.8, y_pos), damping=0.99)
         self.initial_agent_pos = self._agent['robot'].position
+        self.agent_distance = 0
+
+        # Update the screen before capturing initial state
+        self._update()
+        self._clear_screen()
+        self._draw_objects()
+        pygame.display.flip()
 
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
@@ -83,6 +99,7 @@ class Push_Empty_Small_Env(object):
         # Rewards
         self.collision_penalty      = config['collision_penalty'] if config is not None else 10
         self.action_penalty         = config['action_penalty'] if config is not None else 1
+        self.no_movement_penalty    = config['no_movement_penalty'] if config is not None else 0
         self.push_reward            = config['push_reward'] if config is not None else 1
         self.obj_to_goal_reward     = config['obj_to_goal_reward'] if config is not None else 1000
         self.exploration_reward     = config['exploration_reward'] if config is not None else 0.1
@@ -92,9 +109,6 @@ class Push_Empty_Small_Env(object):
         self.available_actions = ['forward', 'backward', 'turn_cw', 'turn_ccw']
         self.action_completed = False
 
-        self.goal_position = (25,75)
-        self.initial_box_dists = [distance(box.position, self.goal_position) for box in self._boxes]
-        # self.initial_object_dist = distance(self._object.position, self.goal_position)
 
         # Collision Handling
         # Robot: 0, Obstacles: 1, Goal: 2, Object: 3
@@ -274,7 +288,7 @@ class Push_Empty_Small_Env(object):
             if self._done:
                 self.reset()
     
-    def step(self, action, primitive=False):
+    def step(self, action, primitive=False, test=False):
         """
         Progress the simulation one time step
         inputs: action
@@ -287,9 +301,18 @@ class Push_Empty_Small_Env(object):
         self._process_events()
         # self._actions(action)
         # self.action_completed = self.take_action(action)
-        self.action_completed = self.straight_line_navigation(action) if not primitive else self._actions(action)
+        if not primitive:
+            self.action_completed = self.straight_line_navigation(action)
+        else:
+            self._actions(action)
+        if self.action_completed:
+            self.agent_distance = distance(self._agent['robot'].position, self.initial_agent_pos)
+            self.initial_agent_pos = self._agent['robot'].position
+        # print(self.agent_distance)
         self._update()
         self._clear_screen()
+        if test:
+            pygame.draw.circle(self._screen, (0,0,0), action, 5)
         self._draw_objects()
         self.get_state()
         
@@ -304,17 +327,14 @@ class Push_Empty_Small_Env(object):
             self.reward_from_last_action = 0
 
         # Calculate reward
-        self.reward_from_last_action += self.get_reward(True if action is not None else False)
-
-        robot_distance = distance(self._agent['robot'].position, self.initial_agent_pos)
-        self.initial_agent_pos = self._agent['robot'].position
+        self.reward_from_last_action += self.get_reward(True if action is not None else False, primitive)
 
         # Items to return
         state = self.state
         reward = self.reward_from_last_action
         done = self._done
         info = {
-            'distance': robot_distance,
+            'distance': self.agent_distance,
             'inactivity': None,
             'cumulative_cubes': 0,
             'cumulative_distance': 0,
@@ -440,8 +460,12 @@ class Push_Empty_Small_Env(object):
         return True
 
     def straight_line_navigation(self, coords) -> bool:
-        if self.collision_occuring or (self.obj_coll_obst and self.is_pushing) or self._done:
-            self._actions('backward')
+        end_action = False
+        for box in self._boxes.values():
+            if box['push_occuring'] and box['collision_occuring']:
+                end_action = True
+        if self.collision_occuring or end_action or self._done:
+            # self._actions('backward')
             return True
         
         # Get the heading of the robot
@@ -494,30 +518,51 @@ class Push_Empty_Small_Env(object):
         return True
     
     def collision_obj_obst_begin(self, arbiter, space, dummy):
-        self.obj_coll_obst = True
+        shapes = arbiter.shapes
+        for box in self._boxes.values():
+            if box['body'].label == shapes[0].body.label:
+                box['collision_occuring'] = True
+                break
         return True
     
     def collision_obj_obst_end(self, arbiter, space, dummy):
-        self.obj_coll_obst = False
+        shapes = arbiter.shapes
+        for box in self._boxes.values():
+            if box['body'].label == shapes[0].body.label:
+                box['collision_occuring'] = False
+                break
         return True
     
     def collision_robo_obj_begin(self, arbiter, space, dummy):
+        shapes = arbiter.shapes
+        for box in self._boxes.values():
+            if box['body'].label == shapes[1].body.label:
+                box['push_occuring'] = True
+                break
+        
+        for box in self._boxes.values():
+            if box['push_occuring'] and box['collision_occuring']:
+                self._agent['wheel_1'].latch = False
+                self._agent['wheel_2'].latch = False
+
         self.is_pushing = True
-        if self.obj_coll_obst:
-            self._agent['wheel_1'].latch = False
-            self._agent['wheel_2'].latch = False
         return True
     
     def collision_robo_obj_end(self, arbiter, space, dummy):
+        shapes = arbiter.shapes
+        for box in self._boxes.values():
+            if box['body'].label == shapes[1].body.label:
+                box['push_occuring'] = False
+                break
+
         self.is_pushing = False
         return True
     
     def collision_obj_goal(self, arbiter, space, dummy):
         shapes = arbiter.shapes
-        for i, box in enumerate(self._boxes):
-            if box.label == shapes[0].body.label:
-                self._boxes.pop(i)
-                self.initial_box_dists.pop(i)
+        for box in self._boxes:
+            if self._boxes[box]['body'].label == shapes[0].body.label:
+                self._boxes.pop(box)
                 self._space.remove(shapes[0], shapes[0].body)
                 break
         if len(self._boxes) == 0:
@@ -531,7 +576,7 @@ class Push_Empty_Small_Env(object):
         self.state = (np.array(self.pxarr).astype(np.float64)/2e32).transpose()
         self.state = np.resize(rescale(self.state, 0.5)*2e32, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
 
-    def get_reward(self, action_taken: bool):
+    def get_reward(self, action_taken: bool, primitive=False):
         """
         Penalty for collision with walls
         Penalty for taking an action
@@ -564,16 +609,21 @@ class Push_Empty_Small_Env(object):
         # print(reward_tracker, self.reward_from_last_action)
 
         # Calculate reward for pushing object closer to goal
-        for i, box in enumerate(self._boxes):
-            dist = distance(box.position, self.goal_position)
-            dist_moved = self.initial_box_dists[i] - dist
-            self.initial_box_dists[i] = dist
+        for box in self._boxes.values():
+            dist = distance(box['body'].position, self.goal_position)
+            dist_moved = box['initial_dist'] - dist
+            box['initial_dist'] = dist
             reward += self.partial_rewards_scale*dist_moved
+
         # dist = distance(self._object.position, self.goal_position)
         # dist_moved = self.initial_object_dist - dist
         # self.initial_object_dist = dist
         # reward += self.partial_rewards_scale*dist_moved
-
+        if self.action_completed:
+            print(self.agent_distance)
+        if self.action_completed and self.agent_distance < (3 if primitive else 25):
+            reward -= self.no_movement_penalty
+            print("No movement penalty")
         return reward
     
     def reset(self):

@@ -347,6 +347,7 @@ class Train_DQL():
                     _, reward, done, _ = env.step(env.available_actions[action], primitive=True)
 
                 elif frame == self.action_freq - 1:
+                    env.action_completed = True
                     next_state, reward, done, _ = env.step(None, primitive=True)
                     if done:
                         self.next_state = None

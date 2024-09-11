@@ -1,13 +1,13 @@
 action_type: straight-line-navigation
 batch_size: 128
 checkpoint_interval: 3000
-checkpoint_path: checkpoint/checkpoint-push_rews.pt
+checkpoint_path: checkpoint/checkpoint-options_rews.pt
 environment: 2
 epsilon_end: 0.01
 epsilon_start: 1.0
 epsilon_steps: 7000
 gamma: 0.99
-log_file: output_logs/train-push_rews.log
+log_file: output_logs/train-options_rews.log
 lr: 0.0005
 ministep_size: 0.25
 model: resnet
@@ -15,6 +15,8 @@ no_goal_timeout: 200
 num_boxes: 5
 num_epochs: 500
 num_of_batches_before_train: 10
+num_policies: 2
+options: True
 replay_buffer_size: 10000
 state_type: vision
 target_update_freq: 1000
@@ -22,6 +24,7 @@ target_update_freq: 1000
 # Rewards
 collision_penalty:      5
 action_penalty:         0
+no_movement_penalty:    3
 push_reward:            1
 obj_to_goal_reward:     1000
 exploration_reward:     0

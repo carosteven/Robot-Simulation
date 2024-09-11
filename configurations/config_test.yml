@@ -25,6 +25,7 @@ target_update_freq: 1000
 collision_penalty:      10
 action_penalty:         0
 push_reward:            1
+no_movement_penalty:    1
 obj_to_goal_reward:     100
 exploration_reward:     0.1
 partial_rewards_scale:  2
