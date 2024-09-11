@@ -268,7 +268,7 @@ class Train_DQL():
             # for frame in tqdm(range(100000)):
             for frame in count():
                 if self.options:
-                    option = self.get_action(self.policies[0]) #TODO: make option policy output the right shape
+                    option = self.get_action(self.policies[0])
                     if option == 0:
                         reward, epi, done = self.primitive_action_control(None, frame, epi, action=1) # 1 is backward
 
@@ -364,6 +364,7 @@ class Train_DQL():
                     break
             
             env.action_completed = False
+            epi += 1
             total_reward = torch.tensor([total_reward], device=self.device)
             return total_reward, epi, done
 

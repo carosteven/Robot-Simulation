@@ -441,7 +441,7 @@ class Push_Empty_Small_Env(object):
 
     def straight_line_navigation(self, coords) -> bool:
         if self.collision_occuring or (self.obj_coll_obst and self.is_pushing) or self._done:
-            self._actions('backward')
+            # self._actions('backward')
             return True
         
         # Get the heading of the robot
