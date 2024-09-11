@@ -67,14 +67,14 @@ class Push_Empty_Small_Env(object):
 
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
-
+        '''
         if config['action_type'] == 'straight-line-navigation':
             self.take_action = self.straight_line_navigation
         elif config['action_type'] == 'action-control':
             self.take_action = self._actions
         else:
             self.take_action = None
-
+        '''
 
         # Agent cumulative rewards
         self.reward = 0
@@ -274,7 +274,7 @@ class Push_Empty_Small_Env(object):
             if self._done:
                 self.reset()
     
-    def step(self, action):
+    def step(self, action, primitive=False):
         """
         Progress the simulation one time step
         inputs: action
@@ -286,7 +286,8 @@ class Push_Empty_Small_Env(object):
 
         self._process_events()
         # self._actions(action)
-        self.action_completed = self.take_action(action)
+        # self.action_completed = self.take_action(action)
+        self.action_completed = self.straight_line_navigation(action) if not primitive else self._actions(action)
         self._update()
         self._clear_screen()
         self._draw_objects()
@@ -578,11 +579,11 @@ class Push_Empty_Small_Env(object):
     def reset(self):
         cumulative_reward = self.reward
         reward_from_last_action = self.reward_from_last_action
-        action_function = self.take_action
+        # action_function = self.take_action
         self.__init__(self.config)
         self.reward = cumulative_reward
         # self.reward_from_last_action = reward_from_last_action
-        self.take_action = action_function
+        # self.take_action = action_function
         return self.state
         
     def close(self):
