@@ -1,10 +1,10 @@
 import torch
 from collections import namedtuple
 
-options = True
+options = False
 
-checkpoint_path = 'checkpoint/checkpoint-options_rews.pt'
-model_path = 'model_weights/model_options_rews.pt'
+checkpoint_path = 'checkpoint/checkpoint-push_rews.pt'
+model_path = 'model_weights/model_push_rews.pt'
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'distance'))
 

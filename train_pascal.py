@@ -86,19 +86,19 @@ class Train_DQL():
             self.policies.append(policy)
 
         if self.options:
-            self.policies[0]['n_actions'] = 2
+            self.policies[0]['n_actions'] = 3
             self.policies[1]['n_actions'] = env.screen_size[0]*env.screen_size[1]
         else:
             self.policies[0]['n_actions'] = env.screen_size[0]*env.screen_size[1]
-
+        
         self.steps_done = 0 # for exploration
         self.contact_made = False # end episode if agent does not push box after x actions
         self.last_epi_box_in_goal = 0
 
     def create_or_restore_training_state(self, state_type, model, buffer_size, hierarchy=0):
         if self.options and hierarchy == 0:
-            policy_net = models.VisionDQN(self.n_observations, n_actions=2)
-            target_net = models.VisionDQN(self.n_observations, n_actions=2)
+            policy_net = models.VisionDQN(self.n_observations, n_actions=3)
+            target_net = models.VisionDQN(self.n_observations, n_actions=3)
         else:
             if state_type == 'vision':
                 if model == 'resnet':
@@ -270,9 +270,12 @@ class Train_DQL():
                 if self.options:
                     option = self.get_action(self.policies[0])
                     if option == 0:
-                        reward, epi, done = self.primitive_action_control(None, frame, epi, action=1) # 1 is backward
+                        reward, epi, done = self.primitive_action_control(None, frame, epi, action=0) # 0 is forward
 
                     elif option == 1:
+                        reward, epi, done = self.primitive_action_control(None, frame, epi, action=1) # 1 is backward
+
+                    elif option == 2:
                         reward, epi, done = self.sln_action_control(self.policies[1], frame, epi)
                     
                     self.policies[0]['memory'].push(self.state, option, self.next_state, reward, 1)
@@ -282,10 +285,10 @@ class Train_DQL():
 
                 else:
                     if self.action_type == 'primitive':
-                        epi, done = self.primitive_action_control(self.policies[0], frame, epi)
+                        _, epi, done = self.primitive_action_control(self.policies[0], frame, epi)
 
                     elif self.action_type == 'straight-line-navigation':
-                        epi, done = self.sln_action_control(self.policies[0], frame, epi)
+                        _, epi, done = self.sln_action_control(self.policies[0], frame, epi)
 
                 self.state = self.next_state
 
@@ -439,7 +442,8 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        default= 'configurations/config_test.yml'
+        # default= 'configurations/config_test.yml'
+        default= 'configurations/config_push_small_sln_push_rews.yml'
     )
 
     main(parser.parse_args())

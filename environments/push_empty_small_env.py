@@ -308,7 +308,7 @@ class Push_Empty_Small_Env(object):
         if self.action_completed:
             self.agent_distance = distance(self._agent['robot'].position, self.initial_agent_pos)
             self.initial_agent_pos = self._agent['robot'].position
-        # print(self.agent_distance)
+            
         self._update()
         self._clear_screen()
         if test:
@@ -619,11 +619,8 @@ class Push_Empty_Small_Env(object):
         # dist_moved = self.initial_object_dist - dist
         # self.initial_object_dist = dist
         # reward += self.partial_rewards_scale*dist_moved
-        if self.action_completed:
-            print(self.agent_distance)
         if self.action_completed and self.agent_distance < (3 if primitive else 25):
             reward -= self.no_movement_penalty
-            print("No movement penalty")
         return reward
     
     def reset(self):
