@@ -591,6 +591,7 @@ class Push_Empty_Small_Env(object):
 
         if self.collision_occuring:
             reward -= self.collision_penalty
+            print("Collision")
             reward_tracker += ":collision penalty: "
 
         if self.is_pushing:
@@ -637,7 +638,7 @@ class Push_Empty_Small_Env(object):
         self._running = False
 
 def main():
-    config_path = 'configurations/config_test.yml'
+    config_path = 'configurations/config_push_small_sln_push_rews.yml'
     with open(config_path) as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
     game = Push_Empty_Small_Env(config)

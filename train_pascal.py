@@ -60,7 +60,7 @@ class Train_DQL():
         # Get number of actions from env
         self.n_actions = len(env.available_actions) if config['action_type'] == 'primitive' else env.screen_size[0]*env.screen_size[1]
 
-        self.action_freq = 25
+        self.action_freq = config['action_freq']
 
         # Global variables
         self.BATCH_SIZE = config['batch_size']                  # How many examples to sample per train step
@@ -195,7 +195,6 @@ class Train_DQL():
     
     def transform_state(self, state_batch): #TODO check if transforming state before storing in memory is more efficient
         colour_batch = torch.zeros((state_batch.shape[0], 3, state_batch.shape[2], state_batch.shape[3]),device=self.device)
-        # print(state_batch[:,0])
         colour_batch[:,0] = torch.bitwise_right_shift(state_batch[:,0], 16)
         colour_batch[:,1] = torch.bitwise_right_shift(state_batch[:,0], 8&255)
         colour_batch[:,2] = torch.bitwise_and(state_batch[:,0], 255)
@@ -380,7 +379,7 @@ class Train_DQL():
 
             epi += 1
         
-        elif frame % self.action_freq == self.action_freq - 1:
+        if frame % self.action_freq == self.action_freq - 1:
             # Store the transition in memory after reward has been accumulated
             next_state, reward, done, _ = env.step(None, primitive=True)
             if done:
@@ -389,7 +388,7 @@ class Train_DQL():
                 self.next_state = torch.tensor(next_state, dtype=torch.int32, device=self.device).unsqueeze(0)
                 
             reward = torch.tensor([reward], device=self.device)
-            policy['memory'].push(self.state, self.action, self.next_state, reward)
+            policy['memory'].push(self.state, self.action, self.next_state, reward, 1)
 
             # self.state = self.next_state
         
@@ -397,10 +396,10 @@ class Train_DQL():
             if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
                 self.update_networks(epi)
 
-        else:
+        elif frame % self.action_freq != 0:
             env.step(None, primitive=True)
         
-        return epi
+        return epi, done
     
 
 def main(args):
@@ -442,8 +441,7 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        # default= 'configurations/config_test.yml'
-        default= 'configurations/config_push_small_sln_options.yml'
+        default= 'configurations/config_basic_test.yml'
     )
 
     main(parser.parse_args())
