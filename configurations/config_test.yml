@@ -12,9 +12,11 @@ lr: 0.0005
 ministep_size: 0.25
 model: resnet
 no_goal_timeout: 250
-num_epochs: 100
 num_boxes: 5
+num_epochs: 100
 num_of_batches_before_train: 1000
+num_policies: 2
+options: True
 replay_buffer_size: 10000
 state_type: vision
 target_update_freq: 1000
@@ -23,6 +25,7 @@ target_update_freq: 1000
 collision_penalty:      10
 action_penalty:         0
 push_reward:            1
+no_movement_penalty:    1
 obj_to_goal_reward:     100
 exploration_reward:     0.1
 partial_rewards_scale:  2

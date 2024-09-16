@@ -16,7 +16,7 @@ import environments
 import models
 
 with open('configurations/config_push_small_sln_push_rews.yml') as file:
-    config = yaml.load(file, Loader=yaml.FullLoader)
+  config = yaml.load(file, Loader=yaml.FullLoader)
 
 env = environments.selector(config)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
