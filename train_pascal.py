@@ -58,7 +58,7 @@ class Train_DQL():
         # Get number of actions from env
         self.n_actions = len(env.available_actions) if config['action_type'] == 'primitive' else env.screen_size[0]*env.screen_size[1]
 
-        self.action_freq = 25
+        self.action_freq = config['action_freq']
 
         # Global variables
         self.BATCH_SIZE = config['batch_size']                  # How many examples to sample per train step
@@ -153,7 +153,10 @@ class Train_DQL():
         # With probability EPSILON, choose a random action
         # Rest of the time, choose argmax_a Q(s, a) 
         if np.random.rand() < self.EPSILON:
-            action = np.random.randint(self.n_actions/4) # /4 because the screen is 304x304 but the action space is 152x152
+            if self.n_actions > 16:
+                action = np.random.randint(self.n_actions/4) # /4 because the screen is 304x304 but the action space is 152x152
+            else:
+                action = np.random.randint(self.n_actions)
         else:
             qvalues = self.policy_net(self.transform_state(self.state))
             action = torch.argmax(qvalues).item()
@@ -171,7 +174,6 @@ class Train_DQL():
     
     def transform_state(self, state_batch): #TODO check if transforming state before storing in memory is more efficient
         colour_batch = torch.zeros((state_batch.shape[0], 3, state_batch.shape[2], state_batch.shape[3]),device=self.device)
-        # print(state_batch[:,0])
         colour_batch[:,0] = torch.bitwise_right_shift(state_batch[:,0], 16)
         colour_batch[:,1] = torch.bitwise_right_shift(state_batch[:,0], 8&255)
         colour_batch[:,2] = torch.bitwise_and(state_batch[:,0], 255)
@@ -301,11 +303,11 @@ class Train_DQL():
         if frame % self.action_freq == 0:
             # Play an episode and log episodic reward
             self.action = self.policy()
-            env.step(env.available_actions[self.action])
+            env.step(env.available_actions[self.action], primitive=True)
 
             epi += 1
         
-        elif frame % self.action_freq == self.action_freq - 1:
+        if frame % self.action_freq == self.action_freq - 1:
             # Store the transition in memory after reward has been accumulated
             next_state, reward, done, _ = env.step(None)
             if done:
@@ -314,7 +316,7 @@ class Train_DQL():
                 self.next_state = torch.tensor(next_state, dtype=torch.int32, device=self.device).unsqueeze(0)
                 
             reward = torch.tensor([reward], device=self.device)
-            self.memory.push(self.state, self.action, self.next_state, reward)
+            self.memory.push(self.state, self.action, self.next_state, reward, 1)
 
             self.state = self.next_state
         
@@ -322,10 +324,10 @@ class Train_DQL():
             if len(self.memory) >= self.BATCH_SIZE*self.num_of_batches_before_train:
                 self.update_networks(epi)
 
-        else:
+        elif frame % self.action_freq != 0:
             env.step(None)
         
-        return epi
+        return epi, done
     
 
 def main(args):
@@ -366,7 +368,7 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        default= 'configurations/config_test.yml'
+        default= 'configurations/config_basic_test.yml'
     )
 
     main(parser.parse_args())
