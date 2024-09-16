@@ -128,14 +128,14 @@ class Train_DQL():
 
         if os.path.exists(self.checkpoint_path):
             training_state = torch.load(self.checkpoint_path)
+            # print(training_state[f'policy_state_dict_0'])
             self.epoch = training_state['epoch']
-            for i in range(self.num_policies):
-                policy_net.load_state_dict(training_state[f'policy_state_dict_{i}'])
-                target_net.load_state_dict(training_state[f'target_state_dict_{i}'])
-                optimizer.load_state_dict(training_state[f'optimizer_state_dict_{i}'])
-                memory.memory = training_state[f'memory_{i}']
-                loss = training_state[f'loss_{i}']
-                epsilon = training_state[f'epsilon_{i}']
+            policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
+            target_net.load_state_dict(training_state[f'target_state_dict_{hierarchy}'])
+            optimizer.load_state_dict(training_state[f'optimizer_state_dict_{hierarchy}'])
+            memory.memory = training_state[f'memory_{hierarchy}']
+            loss = training_state[f'loss_{hierarchy}']
+            epsilon = training_state[f'epsilon_{hierarchy}']
             logging.info(f"Training state restored at epoch {self.epoch}")
         else:
             logging.info("No checkpoint detected, starting from initial state")
@@ -443,7 +443,7 @@ if __name__ == "__main__":
         type=str,
         help='path of the configuration file',
         # default= 'configurations/config_test.yml'
-        default= 'configurations/config_push_small_sln_push_rews.yml'
+        default= 'configurations/config_push_small_sln_options.yml'
     )
 
     main(parser.parse_args())

@@ -14,5 +14,5 @@ if options:
     for i in range(2):
         torch.save(checkpoint[f'policy_state_dict_{i}'], model_path[:-3] + f'_{i}.pt')
 else:
-    torch.save(checkpoint['policy_state_dict'], model_path)
+    torch.save(checkpoint['policy_state_dict_0'], model_path)
 # print(checkpoint['epsilon'])
