@@ -6,22 +6,24 @@ checkpoint_path: checkpoint/checkpoint-basic-test.pt
 environment: 3
 epsilon_end: 0.01
 epsilon_start: 1.0
-epsilon_steps: 6000
+epsilon_steps: 7000
 gamma: 0.99
 log_file: output_logs/train-basic-test.log
 lr: 0.0005
 ministep_size: 0.25
 model: resnet
 no_goal_timeout: 1000
-num_epochs: 100
 num_boxes: 1
+num_epochs: 100
 num_of_batches_before_train: 1000
+num_policies: 1
+options: False
 replay_buffer_size: 10000
 state_type: vision
 target_update_freq: 1000
 
 # Rewards
-collision_penalty:      10
+collision_penalty:      5
 action_penalty:         0
 no_movement_penalty:    0
 push_reward:            0

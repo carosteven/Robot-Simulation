@@ -15,7 +15,8 @@ import torch.nn.functional as F
 import environments
 import models
 
-with open('configurations/config_push_small_sln_push_rews.yml') as file:
+# with open('configurations/config_basic_primitive.yml') as file:
+with open('configurations/config_basic_primitive.yml') as file:
   config = yaml.load(file, Loader=yaml.FullLoader)
 
 env = environments.selector(config)
@@ -26,12 +27,12 @@ Transition = namedtuple('Transition',
 
 # Get number of actions from env
 n_actions = len(env.available_actions)
-action_freq = 25
-# Get numbaer of state observations
+action_freq = config['action_freq']
+# Get number of state observations
 state = torch.tensor(env.reset(), dtype=torch.int32, device=device).unsqueeze(0)
 n_observations = 3 #len(state)
 # checkpoint_path = 'model - no pushing.pt'
-checkpoint_path = 'model_weights/model_push_rews.pt'
+checkpoint_path = 'model_weights/model_basic-test.pt'
 
 options = config['options']
 
@@ -62,15 +63,9 @@ else:
 
 def transform_state(state_batch):
         colour_batch = torch.zeros((state_batch.shape[0], 3, state_batch.shape[2], state_batch.shape[3]),device=device)
-        # print(state_batch[:,0])
         colour_batch[:,0] = torch.bitwise_right_shift(state_batch[:,0], 16)
         colour_batch[:,1] = torch.bitwise_right_shift(state_batch[:,0], 8&255)
         colour_batch[:,2] = torch.bitwise_and(state_batch[:,0], 255)
-        # np_array = colour_batch.cpu().numpy()
-        # np_array = np_array.transpose(0,2,3,1)
-        # image = Image.fromarray(np_array[0].astype(np.uint8))
-        # image.show()
-        # input()
         return colour_batch
 
 def policy(state, policy_n=None):
@@ -80,8 +75,6 @@ def policy(state, policy_n=None):
     with torch.no_grad():
         state = state.to(torch.int32)
         qvalues = policy_n(transform_state(state))
-        # print(torch.max(qvalues).item())
-        # print(qvalues[:,152*76+76])
         action = torch.argmax(qvalues).item()
 
     action = torch.tensor([[action]], device=device, dtype=torch.long)
@@ -110,35 +103,53 @@ def sln_action_control(state, policy_n=None):
     state = next_state
     return done, state
 
-def primitive_action_control(state, action):
-    print("Back it up")
+def primitive_action_control(state, action=None):
     total_reward = 0
-    for frame in range(action_freq):
-        if frame == 0:
-            _, reward, done, _ = env.step(env.available_actions[action], primitive=True)
+    if action is not None:
+        for frame in range(action_freq):
+            if frame == 0:
+                _, reward, done, _ = env.step(env.available_actions[action], primitive=True)
 
-        elif frame == action_freq - 1:
-            env.action_completed = True
+            elif frame == action_freq - 1:
+                env.action_completed = True
+                next_state, reward, done, _ = env.step(None, primitive=True)
+                if done:
+                    next_state = None
+                else:
+                    next_state = torch.tensor(next_state, dtype=torch.int32, device=device).unsqueeze(0)
+                    
+            else:
+                _, reward, done, _ = env.step(None, primitive=True)
+            
+            total_reward += reward
+            if done:
+                next_state = None
+                break
+        
+        env.action_completed = False
+
+        state = next_state
+        return done, state
+
+    for frame in range(action_freq):
+        if frame % action_freq == 0:
+            # Play an episode and log episodic reward
+            action = policy(state)
+            env.step(env.available_actions[action], primitive=True)
+
+        if frame % action_freq == action_freq - 1:
             next_state, reward, done, _ = env.step(None, primitive=True)
             if done:
                 next_state = None
             else:
                 next_state = torch.tensor(next_state, dtype=torch.int32, device=device).unsqueeze(0)
-                
-            # reward = torch.tensor([reward], device=device)
 
-        else:
-            _, reward, done, _ = env.step(None, primitive=True)
-        
-        total_reward += reward
-        if done:
-            next_state = None
-            break
-    
-    env.action_completed = False
+            state = next_state
+            total_reward += reward
+
+        elif frame % action_freq != 0:
+            env.step(None, primitive=True)
     print(total_reward)
-    total_reward = torch.tensor([total_reward], device=device)
-    state = next_state
     return done, state
 
 state = torch.tensor(env.reset(), dtype=torch.int32, device=device).unsqueeze(0)
@@ -165,7 +176,7 @@ while not done:
     if config['action_type'] == 'straight-line-navigation':
         done, state = sln_action_control(state)
     else:
-        env.step(None)
+        done, state = primitive_action_control(state)
         
     if done:
         state = torch.tensor(env.reset(), dtype=torch.int32, device=device).unsqueeze(0)
