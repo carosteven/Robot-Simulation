@@ -1,3 +1,4 @@
+action_freq: 25
 action_type: straight-line-navigation
 batch_size: 2
 checkpoint_interval: 3000

@@ -371,7 +371,6 @@ class Train_DQL():
             total_reward = torch.tensor([total_reward], device=self.device)
             return total_reward, epi, done
 
-
         if frame % self.action_freq == 0:
             # Play an episode and log episodic reward
             self.action = self.get_action(policy)
@@ -398,7 +397,7 @@ class Train_DQL():
 
         elif frame % self.action_freq != 0:
             env.step(None, primitive=True)
-        
+        # print(reward)
         return reward, epi, done
     
 
