@@ -30,6 +30,7 @@ push_reward:            0
 obj_to_goal_reward:     100
 exploration_reward:     0
 partial_rewards_scale:  2
+corner_penalty:         10
 
 # Only need if environment is 3
 box_uncertainty: 0.1

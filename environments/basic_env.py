@@ -51,7 +51,7 @@ class Basic_Env(object):
 
         # Environment
         self.grid_size = config['grid_size'] if config is not None else 10
-        self.grid_world = np.full((self.grid_size, self.grid_size), ' ')
+        self.grid_world = np.full((self.grid_size, self.grid_size), '', dtype=object)
         
         # The objects to be pushed
         self.box_uncertainty = config['box_uncertainty'] if config is not None else 0.1
@@ -89,6 +89,7 @@ class Basic_Env(object):
         self.obj_to_goal_reward     = config['obj_to_goal_reward'] if config is not None else 1000
         self.exploration_reward     = config['exploration_reward'] if config is not None else 0.1
         self.partial_rewards_scale  = config['partial_rewards_scale'] if config is not None else 1
+        self.corner_penalty         = config['corner_penalty'] if config is not None else 10
 
         # Available actions
         self.available_actions = ['N', 'E', 'S', 'W', 'NE', 'SE', 'SW', 'NW']
@@ -131,17 +132,18 @@ class Basic_Env(object):
             for j in range(2):
                 self.grid_world[i][j] = 'g'
 
-        c1 = self.grid_to_env((9,0))
-        c2 = self.grid_to_env((9,9))
-        c3 = self.grid_to_env((0,9))
-        self.grid_world[(9,0)] = 'w'
-        self.grid_world[(9,9)] = 'w'
-        self.grid_world[(0,9)] = 'w'
-        static_border = [ # Put gray square in each corner of the screen
-            pymunk.Poly(static_body, ((c1[1]-14, c1[0]-14), (c1[1]-14, c1[0]+14), (c1[1]+14, c1[0]+14), (c1[1]+14, c1[0]-14))),
-            pymunk.Poly(static_body, ((c2[1]-14, c2[0]-14), (c2[1]-14, c2[0]+14), (c2[1]+14, c2[0]+14), (c2[1]+14, c2[0]-14))),
-            pymunk.Poly(static_body, ((c3[1]-14, c3[0]-14), (c3[1]-14, c3[0]+14), (c3[1]+14, c3[0]+14), (c3[1]+14, c3[0]-14))),
-        ]
+        # Put gray square in each corner of the screen
+        static_border = []
+        for coord in [(9,0), (9,9), (0,9)]:
+            self.grid_world[coord] = 'w'
+            c = self.grid_to_env(coord)
+            static_border.append(pymunk.Poly(static_body, ((c[1]-14, c[0]-14), (c[1]-14, c[0]+14), (c[1]+14, c[0]+14), (c[1]+14, c[0]-14))))
+        
+        # Label new corners
+        for coord in [(8,0), (9,1), (8,9), (9,8), (0,8), (1,9)]:
+            self.grid_world[coord] = 'c'
+
+        # Create the border walls
         for i in range(self.grid_size +1):
             static_border.append(pymunk.Segment(static_body, (i*grid_scale,0), (i*grid_scale,self.screen_size[1]), 1))
             static_border.append(pymunk.Segment(static_body, (0,i*grid_scale), (self.screen_size[0],i*grid_scale), 1))
@@ -164,6 +166,7 @@ class Basic_Env(object):
         object_body.damping = damping
         object_body.label = 'box_'+ str(id)
         object_body.velocity_func = custom_damping
+        object_body.in_corner = False
         
         object = pymunk.Poly(object_body, ((-radius, -radius), (-radius, radius), (radius, radius), (radius, -radius)))
         object.color = (255, 0, 0, 255)
@@ -223,6 +226,7 @@ class Basic_Env(object):
             pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
 
             if action is not None:
+                print(self.reward_from_last_action)
                 self.reward += self.reward_from_last_action
                 self.reward_from_last_action = 0
 
@@ -376,8 +380,11 @@ class Basic_Env(object):
         if grid_coords[0] < 0 or grid_coords[0] >= self.grid_size or grid_coords[1] < 0 or grid_coords[1] >= self.grid_size or self.grid_world[grid_coords] == 'w':
             collision_detected = True
             self.collision_occuring = True if obj_type == 'r' else False
+            return collision_detected
         
-        elif self.grid_world[grid_coords] == 'b':
+        grid_label = self.grid_world[grid_coords]
+        grid_label = grid_label[-1] if grid_label != '' else grid_label
+        if grid_label == 'b':
             if obj_type == 'r':
                 self.is_pushing = True
             new_box_coords = self.move_box(grid_coords, action)
@@ -385,10 +392,11 @@ class Basic_Env(object):
                 collision_detected = True
             elif not self._done:
                 self._boxes[0].position = self.grid_to_env(new_box_coords)
-                self.grid_world[grid_coords] = None
-                self.grid_world[new_box_coords] = 'b'
+                self.grid_world[grid_coords] = self.grid_world[grid_coords][:-1]
+                new_grid_label = self.grid_world[new_box_coords] + 'b'
+                self.grid_world[new_box_coords] += "b"
         
-        elif self.grid_world[grid_coords] == 'g':
+        elif grid_label == 'g':
             if obj_type == 'r':
                 collision_detected = True
                 self.collision_occuring = True
@@ -396,6 +404,10 @@ class Basic_Env(object):
                 self._space.remove(self._boxes[0])
                 self._boxes.pop(0)
                 self._done = True
+        
+        elif grid_label == 'c':
+            if obj_type == 'b':
+                self._boxes[0].in_corner = True
 
         return collision_detected
 
@@ -427,8 +439,8 @@ class Basic_Env(object):
         if self.check_collision(new_coords, action, 'r'):
             return False
         self._agent['robot'].position = self.grid_to_env((new_coords))
-        self.grid_world[grid_coords] = None
-        self.grid_world[new_coords] = 'r'
+        self.grid_world[grid_coords] = self.grid_world[grid_coords][:-1]
+        self.grid_world[new_coords] += 'r'
         
         return True
 
@@ -461,6 +473,11 @@ class Basic_Env(object):
             reward += self.push_reward
             reward_tracker += ":push: "
         self.is_pushing = False
+
+        for box in self._boxes:
+            if box.in_corner:
+                reward -= self.corner_penalty
+            box.in_corner = False
 
         self.boxes_in_goal = self.boxes_remaining-len(self._boxes)
         reward += (self.boxes_in_goal)*self.obj_to_goal_reward

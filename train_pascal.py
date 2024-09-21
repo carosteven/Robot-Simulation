@@ -89,7 +89,7 @@ class Train_DQL():
             self.policies[0]['n_actions'] = 3
             self.policies[1]['n_actions'] = env.screen_size[0]*env.screen_size[1]
         else:
-            self.policies[0]['n_actions'] = env.screen_size[0]*env.screen_size[1]
+            self.policies[0]['n_actions'] = self.n_actions
         
         self.steps_done = 0 # for exploration
         self.contact_made = False # end episode if agent does not push box after x actions
@@ -371,7 +371,6 @@ class Train_DQL():
             total_reward = torch.tensor([total_reward], device=self.device)
             return total_reward, epi, done
 
-
         if frame % self.action_freq == 0:
             # Play an episode and log episodic reward
             self.action = self.get_action(policy)
@@ -394,12 +393,12 @@ class Train_DQL():
         
             # Train after collecting sufficient experience
             if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
-                self.update_networks(epi)
+                self.update_networks(policy, epi)
 
         elif frame % self.action_freq != 0:
             env.step(None, primitive=True)
-        
-        return epi, done
+        # print(reward)
+        return reward, epi, done
     
 
 def main(args):

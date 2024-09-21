@@ -6,7 +6,7 @@ checkpoint_path: checkpoint/checkpoint-basic-test.pt
 environment: 3
 epsilon_end: 0.01
 epsilon_start: 1.0
-epsilon_steps: 7000
+epsilon_steps: 70000
 gamma: 0.99
 log_file: output_logs/train-basic-test.log
 lr: 0.0005
@@ -30,6 +30,7 @@ push_reward:            0
 obj_to_goal_reward:     100
 exploration_reward:     0
 partial_rewards_scale:  2
+corner_penalty:         10
 
 # Only need if environment is 3
 box_uncertainty: 0.1
