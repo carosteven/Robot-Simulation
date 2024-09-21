@@ -3,8 +3,8 @@ from collections import namedtuple
 
 options = False
 
-checkpoint_path = 'checkpoint/checkpoint-push_rews.pt'
-model_path = 'model_weights/model_push_rews.pt'
+checkpoint_path = 'checkpoint/checkpoint-basic-test.pt'
+model_path = 'model_weights/model_basic-test.pt'
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'distance'))
 
