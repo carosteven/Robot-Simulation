@@ -18,12 +18,13 @@ import os
 import yaml
 
 import logging
-logging.getLogger('pymunk').propagate = False
 
 import environments
 import models
 
 from PIL import Image
+
+logging.getLogger('pymunk').propagate = False
 
 env = None
 
