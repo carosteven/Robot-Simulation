@@ -193,11 +193,12 @@ class Train_DQL():
 
         return action
     
-    def transform_state(self, state_batch): #TODO check if transforming state before storing in memory is more efficient
-        colour_batch = torch.zeros((state_batch.shape[0], 3, state_batch.shape[2], state_batch.shape[3]),device=self.device)
-        colour_batch[:,0] = torch.bitwise_right_shift(state_batch[:,0], 16)
-        colour_batch[:,1] = torch.bitwise_right_shift(state_batch[:,0], 8&255)
-        colour_batch[:,2] = torch.bitwise_and(state_batch[:,0], 255)
+    def transform_state(self, state_batch):
+        colour_batch = torch.zeros((state_batch.shape[0], 3, state_batch.shape[2], state_batch.shape[3]),device=self.device,dtype=torch.float32)
+        colour_batch[:,0] = torch.bitwise_and(torch.bitwise_right_shift(state_batch[:,0], 16), 255) # Red channel
+        colour_batch[:, 1] = torch.bitwise_and(torch.bitwise_right_shift(state_batch[:, 0], 8), 255)  # Green channel
+        colour_batch[:, 2] = torch.bitwise_and(state_batch[:, 0], 255)  # Blue channel
+        colour_batch = colour_batch / 255.0
         return colour_batch
     
     def update_networks(self, policy, epi):
