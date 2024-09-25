@@ -18,12 +18,13 @@ import os
 import yaml
 
 import logging
-logging.getLogger('pymunk').propagate = False
 
 import environments
 import models
 
 from PIL import Image
+
+logging.getLogger('pymunk').propagate = False
 
 env = None
 
@@ -441,7 +442,7 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        default= 'configurations/config_basic_test.yml'
+        default= 'configurations/config_basic_primitive.yml'
     )
 
     main(parser.parse_args())
