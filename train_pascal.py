@@ -271,8 +271,8 @@ class Train_DQL():
                     goal_distance[i, y, x] = math.sqrt((x - env.goal_position[0]/2)**2 + (y - env.goal_position[1]/2)**2)
 
         # As a test, make a heatmap of the goal distance
-        plt.imshow(agent_mask[0].cpu().numpy())
-        plt.show()
+        # plt.imshow(agent_mask[0].cpu().numpy())
+        # plt.show()
 
         # Fill the multiinfo tensor with the grayscale image, the agent mask, the agent distance, and the goal distance
         multiinfo_batch[:, 0] = grayscale / 255.0
