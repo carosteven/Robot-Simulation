@@ -62,6 +62,7 @@ class Train_DQL():
         self.n_actions = len(env.available_actions) if config['action_type'] == 'primitive' else env.screen_size[0]*env.screen_size[1]
 
         self.action_freq = config['action_freq']
+        self.state_info = config['state_info']
 
         # Global variables
         self.BATCH_SIZE = config['batch_size']                  # How many examples to sample per train step
@@ -74,10 +75,17 @@ class Train_DQL():
 
         self.EPSILON = self.STARTING_EPSILON
 
-        # Get number of state observations
-        self.state = torch.tensor(env.reset(), dtype=torch.int32, device=self.device).unsqueeze(0)
-        # self.n_observations = len(self.state)
-        self.n_observations = 3 # (channels)
+        if self.state_info == 'colour':
+            self.transform_state = self.trans_colour_state
+            # Get number of state observations
+            # self.n_observations = len(self.state)
+            self.n_observations = 3 # (channels)
+
+        elif self.state_info == 'multiinfo':
+            self.transform_state = self.trans_multiinfo_state
+            self.n_observations = 4 # (channels)
+
+        self.state = self.get_state(env.reset())
         self.next_state = None
         self.action = None
         
@@ -95,6 +103,19 @@ class Train_DQL():
         self.steps_done = 0 # for exploration
         self.contact_made = False # end episode if agent does not push box after x actions
         self.last_epi_box_in_goal = 0
+    
+    def get_state(self, raw_state):
+        if self.state_info == 'colour':
+            state = torch.tensor(raw_state, dtype=torch.int32, device=self.device).unsqueeze(0)
+        elif self.state_info == 'multiinfo':
+            state = []
+            state.append(torch.tensor(raw_state[0], dtype=torch.int32, device=self.device).unsqueeze(0))
+            state.append(torch.zeros_like(state[0], device=self.device, dtype=torch.int32))
+            state[1][0,0,0,0] = raw_state[1][0]
+            state[1][0,0,0,1] = raw_state[1][1]
+            state = torch.stack(state, dim=1)
+        return state
+
 
     def create_or_restore_training_state(self, state_type, model, buffer_size, hierarchy=0):
         if self.options and hierarchy == 0:
@@ -194,13 +215,74 @@ class Train_DQL():
 
         return action
     
-    def transform_state(self, state_batch):
+    def trans_colour_state(self, state_batch):
         colour_batch = torch.zeros((state_batch.shape[0], 3, state_batch.shape[2], state_batch.shape[3]),device=self.device,dtype=torch.float32)
         colour_batch[:,0] = torch.bitwise_and(torch.bitwise_right_shift(state_batch[:,0], 16), 255) # Red channel
         colour_batch[:, 1] = torch.bitwise_and(torch.bitwise_right_shift(state_batch[:, 0], 8), 255)  # Green channel
         colour_batch[:, 2] = torch.bitwise_and(state_batch[:, 0], 255)  # Blue channel
         colour_batch = colour_batch / 255.0
         return colour_batch
+    
+    def trans_multiinfo_state(self, state_batch):
+        # Returns a tensor of shape (batch_size, 4, height, width)
+        # Channel 0: Grayscale image
+        # Channel 1: Mask of the agent
+        # Channel 2: Distance from the agent to every pixel
+        # Channel 3: Distance from the goal to every pixel
+        # state_batch is a tensor of shape (batch_size, 2)
+        # where the first element is an integer rgb array of the environment and the second element is the position of the agent
+        
+        # Extract the rgb array and the agent position
+        image = state_batch[:, 0, 0]
+        agent_pos = state_batch[:,1,0,0,0:2]/2
+        agent_pos = agent_pos.int()
+
+        # Get the height and width of the image
+        height, width = image.shape[1], image.shape[2]
+
+        # Create a tensor of shape (batch_size, 4, height, width) filled with zeros
+        multiinfo_batch = torch.zeros((state_batch.shape[0], 4, height, width), device=self.device, dtype=torch.float32)
+
+        # Extract the red, green, and blue channels from the rgb array
+        red = torch.bitwise_and(torch.bitwise_right_shift(image, 16), 255)
+        green = torch.bitwise_and(torch.bitwise_right_shift(image, 8), 255)
+        blue = torch.bitwise_and(image, 255)
+
+        # Calculate the grayscale image
+        grayscale = 0.2989 * red + 0.5870 * green + 0.1140 * blue
+
+        # Calculate the mask of the agent (50 pixels (scaled so 24) around the agent)
+        agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        for i in range(state_batch.shape[0]):
+            agent_mask[i, agent_pos[i, 1]-12:agent_pos[i, 1]+12, agent_pos[i, 0]-12:agent_pos[i, 0]+12] = 1.0
+
+        # Calculate the distance from the agent to every pixel
+        agent_distance = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        for i in range(state_batch.shape[0]):
+            for y in range(height):
+                for x in range(width):
+                    agent_distance[i, y, x] = math.sqrt((x - agent_pos[i, 0])**2 + (y - agent_pos[i, 1])**2)
+
+        # Calculate the distance from the goal to every pixel
+        goal_distance = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        for i in range(state_batch.shape[0]):
+            for y in range(height):
+                for x in range(width):
+                    goal_distance[i, y, x] = math.sqrt((x - env.goal_position[0]/2)**2 + (y - env.goal_position[1]/2)**2)
+
+        # As a test, make a heatmap of the goal distance
+        plt.imshow(agent_mask[0].cpu().numpy())
+        plt.show()
+
+        # Fill the multiinfo tensor with the grayscale image, the agent mask, the agent distance, and the goal distance
+        multiinfo_batch[:, 0] = grayscale / 255.0
+        multiinfo_batch[:, 1] = agent_mask
+        multiinfo_batch[:, 2] = agent_distance / (304.0/2)
+        multiinfo_batch[:, 3] = goal_distance / (304.0/2)
+
+        return multiinfo_batch
+
+
     
     def update_networks(self, policy, epi):
     
@@ -259,7 +341,7 @@ class Train_DQL():
 
         for epoch in tqdm(range(self.num_epochs)):
             # Reset environment and get new state
-            self.state = torch.tensor(env.reset(), dtype=torch.int32, device=self.device).unsqueeze(0)
+            self.state = self.get_state(env.reset())
             self.contact_made = False
             logging.info(f'Epoch {self.epoch}')
 
@@ -386,7 +468,7 @@ class Train_DQL():
             if done:
                 self.next_state = None
             else:
-                self.next_state = torch.tensor(next_state, dtype=torch.int32, device=self.device).unsqueeze(0)
+                self.next_state = self.get_state(next_state)
                 
             reward = torch.tensor([reward], device=self.device)
             policy['memory'].push(self.state, self.action, self.next_state, reward, 1)
@@ -442,7 +524,7 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        default= 'configurations/config_basic_primitive.yml'
+        default= 'configurations/config_basic_test.yml'
     )
 
     main(parser.parse_args())

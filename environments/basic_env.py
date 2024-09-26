@@ -28,6 +28,7 @@ class Basic_Env(object):
         self.config = config
 
         self.state_type = config['state_type'] if config is not None else 'vision'
+        self.state_info =  config['state_info'] if config is not None else 'colour'
 
         # Space
         self._space = pymunk.Space()
@@ -58,10 +59,12 @@ class Basic_Env(object):
         self.boxes_remaining = config['num_boxes'] if config is not None else 1
         self._boxes = []
         for i in range(self.boxes_remaining):
-            self._boxes.append(self._create_object(id=i, radius=14, mass=5, position=(random.randint(5,8), random.randint(2,6)), damping=.99))
+            # self._boxes.append(self._create_object(id=i, radius=14, mass=5, position=(random.randint(5,8), random.randint(2,6)), damping=.99))
+            self._boxes.append(self._create_object(id=i, radius=14, mass=5, position=(4,4), damping=.99))
 
         # The agent to be controlled
-        self._agent = self._create_agent(vertices=((-14,-14), (-14,14), (14,14), (14,-14)), mass=10, position=(random.randint(1,8), 8), damping=0.99)
+        # self._agent = self._create_agent(vertices=((-14,-14), (-14,14), (14,14), (14,-14)), mass=10, position=(random.randint(1,8), 8), damping=0.99)
+        self._agent = self._create_agent(vertices=((-14,-14), (-14,14), (14,14), (14,-14)), mass=10, position=(4, 5), damping=0.99)
         self.initial_agent_pos = self._agent['robot'].position
 
         # Static barrier walls (lines) that the balls bounce off of
@@ -95,7 +98,7 @@ class Basic_Env(object):
         self.available_actions = ['N', 'E', 'S', 'W', 'NE', 'SE', 'SW', 'NW']
         self.action_completed = False
 
-        self.goal_position = (25,75)
+        self.goal_position = (30,60)
         self.initial_box_dists = [distance(box.position, self.goal_position) for box in self._boxes]
         # self.initial_object_dist = distance(self._object.position, self.goal_position)
 
@@ -153,6 +156,7 @@ class Basic_Env(object):
             line.friction = 0.9
             line.collision_type = 1
             line.filter = pymunk.ShapeFilter(categories=0b10)
+            line.color = (0, 0, 0, 255)
         self._space.add(*static_border)
 
     def _create_object(self, id: int, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
@@ -216,8 +220,8 @@ class Basic_Env(object):
             self._actions(action)
             self._update()
             self._clear_screen()
-            # pygame.draw.circle(self._screen, (0,0,0), (60,243), 5)
             self._draw_objects()
+            # pygame.draw.circle(self._screen, (0,0,0), (self.goal_position), 5)
             self.get_state()
             
             pygame.display.flip()
@@ -226,12 +230,15 @@ class Basic_Env(object):
             pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
 
             if action is not None:
-                print(self.reward_from_last_action)
+                # print(self.reward_from_last_action)
                 self.reward += self.reward_from_last_action
                 self.reward_from_last_action = 0
 
             # Calculate reward
             self.reward_from_last_action += self.get_reward(True if action is not None else False)
+            if action is not None:
+                print(self.reward_from_last_action)
+
             # self.reward = self.get_reward(True if action is not None else False)
 
             # Calculate reward
@@ -448,8 +455,17 @@ class Basic_Env(object):
         """
         Gets integer pixel values from screen
         """
-        self.state = (np.array(self.pxarr).astype(np.float64)/2e32).transpose()
-        self.state = np.resize(rescale(self.state, 0.5)*2e32, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
+        state = (np.array(self.pxarr).astype(np.float64)/2e32).transpose()
+        state = np.resize(rescale(state, 0.5)*2e32, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
+        
+        if self.state_info == 'colour':
+            self.state = state
+        
+        elif self.state_info == 'multiinfo':
+            self.state = []
+            self.state.append(state)
+            # append agent position
+            self.state.append(self._agent['robot'].position)
 
     def get_reward(self, action_taken: bool):
         """
