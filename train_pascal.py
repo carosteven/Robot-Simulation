@@ -150,7 +150,6 @@ class Train_DQL():
 
         if os.path.exists(self.checkpoint_path):
             training_state = torch.load(self.checkpoint_path)
-            # print(training_state[f'policy_state_dict_0'])
             self.epoch = training_state['epoch']
             policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
             target_net.load_state_dict(training_state[f'target_state_dict_{hierarchy}'])
@@ -194,7 +193,7 @@ class Train_DQL():
     def get_action(self, policy):
         # With probability EPSILON, choose a random action
         # Rest of the time, choose argmax_a Q(s, a) 
-        if np.random.rand() < policy['epsilon']:
+        if np.random.rand() < 2:#policy['epsilon']:
             if policy['n_actions'] > 16:
                 action = np.random.randint(policy['n_actions']/4) # /4 because the screen is 304x304 but the action space is 152x152
             else:
@@ -253,26 +252,31 @@ class Train_DQL():
 
         # Calculate the mask of the agent (50 pixels (scaled so 24) around the agent)
         agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
-        for i in range(state_batch.shape[0]):
-            agent_mask[i, agent_pos[i, 1]-12:agent_pos[i, 1]+12, agent_pos[i, 0]-12:agent_pos[i, 0]+12] = 1.0
+        agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
+        y_indices = y_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
+        x_indices = x_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
+        
+        agent_mask = ((x_indices >= (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) - 12)) & 
+                  (x_indices < (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) + 12)) & 
+                  (y_indices >= (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) - 12)) & 
+                  (y_indices < (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) + 12))).float()
 
         # Calculate the distance from the agent to every pixel
-        agent_distance = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
-        for i in range(state_batch.shape[0]):
-            for y in range(height):
-                for x in range(width):
-                    agent_distance[i, y, x] = math.sqrt((x - agent_pos[i, 0])**2 + (y - agent_pos[i, 1])**2)
+        y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
+        y_indices, x_indices = y_indices.unsqueeze(0), x_indices.unsqueeze(0)
+        agent_distance = torch.sqrt((x_indices - agent_pos[:, 0].unsqueeze(1).unsqueeze(2))**2 + (y_indices - agent_pos[:, 1].unsqueeze(1).unsqueeze(2))**2)
 
         # Calculate the distance from the goal to every pixel
         goal_distance = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
-        for i in range(state_batch.shape[0]):
-            for y in range(height):
-                for x in range(width):
-                    goal_distance[i, y, x] = math.sqrt((x - env.goal_position[0]/2)**2 + (y - env.goal_position[1]/2)**2)
+        goal_position = torch.tensor(env.goal_position, device=self.device, dtype=torch.float32) / 2
+        goal_x, goal_y = goal_position[0], goal_position[1]
+        goal_distance = torch.sqrt((x_indices - goal_x)**2 + (y_indices - goal_y)**2)
 
         # As a test, make a heatmap of the goal distance
         # plt.imshow(agent_mask[0].cpu().numpy())
         # plt.show()
+        # input()
 
         # Fill the multiinfo tensor with the grayscale image, the agent mask, the agent distance, and the goal distance
         multiinfo_batch[:, 0] = grayscale / 255.0
@@ -285,7 +289,6 @@ class Train_DQL():
 
     
     def update_networks(self, policy, epi):
-    
         # Sample a minibatch (s, a, r, s', d)
         # Each variable is a vector of corresponding values
         transitions = policy['memory'].sample(self.BATCH_SIZE)
@@ -311,7 +314,7 @@ class Train_DQL():
 
         # Detach y since it is the target. Target values should
         # be kept fixed.
-        loss = torch.nn.SmoothL1Loss()(targets.detach(), qvalues)
+        loss = torch.nn.SmoothL1Loss()(targets.detach().view_as(qvalues), qvalues)
 
         # Backpropagation
         policy['optimizer'].zero_grad()
