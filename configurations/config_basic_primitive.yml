@@ -6,14 +6,14 @@ checkpoint_path: checkpoint/checkpoint-basic-states.pt
 environment: 3
 epsilon_end: 0.01
 epsilon_start: 1.0
-epsilon_steps: 70000
+epsilon_steps: 10000
 gamma: 0.99
 log_file: output_logs/train-basic-states.log
 lr: 0.0005
 ministep_size: 0.25
 model: resnet
 no_goal_timeout: 250
-num_boxes: 1
+num_boxes: 5
 num_epochs: 500
 num_of_batches_before_train: 10
 num_policies: 1

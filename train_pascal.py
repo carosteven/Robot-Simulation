@@ -193,7 +193,7 @@ class Train_DQL():
     def get_action(self, policy):
         # With probability EPSILON, choose a random action
         # Rest of the time, choose argmax_a Q(s, a) 
-        if np.random.rand() < 2:#policy['epsilon']:
+        if np.random.rand() < policy['epsilon']:
             if policy['n_actions'] > 16:
                 action = np.random.randint(policy['n_actions']/4) # /4 because the screen is 304x304 but the action space is 152x152
             else:
@@ -250,17 +250,17 @@ class Train_DQL():
         # Calculate the grayscale image
         grayscale = 0.2989 * red + 0.5870 * green + 0.1140 * blue
 
-        # Calculate the mask of the agent (50 pixels (scaled so 24) around the agent)
+        # Calculate the mask of the agent (28 pixels (scaled so 14) around the agent)
         agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
         agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
         y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
         y_indices = y_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
         x_indices = x_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
         
-        agent_mask = ((x_indices >= (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) - 12)) & 
-                  (x_indices < (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) + 12)) & 
-                  (y_indices >= (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) - 12)) & 
-                  (y_indices < (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) + 12))).float()
+        agent_mask = ((x_indices >= (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) - 7)) & 
+                  (x_indices < (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) + 7)) & 
+                  (y_indices >= (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) - 7)) & 
+                  (y_indices < (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) + 7))).float()
 
         # Calculate the distance from the agent to every pixel
         y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
@@ -456,9 +456,13 @@ class Train_DQL():
             env.action_completed = False
             epi += 1
             total_reward = torch.tensor([total_reward], device=self.device)
+            if env.boxes_in_goal != 0:
+                logging.info(f"{env.boxes_in_goal} boxes added to receptacle.")
+                self.last_epi_box_in_goal = epi
             return total_reward, epi, done
 
         if frame % self.action_freq == 0:
+            prev_boxes_in_goal = env.boxes_in_goal
             # Play an episode and log episodic reward
             self.action = self.get_action(policy)
             env.step(env.available_actions[self.action], primitive=True)
@@ -472,8 +476,11 @@ class Train_DQL():
                 self.next_state = None
             else:
                 self.next_state = self.get_state(next_state)
-                
             reward = torch.tensor([reward], device=self.device)
+            # print(env.boxes_in_goal)
+            if env.boxes_in_goal > prev_boxes_in_goal:
+                logging.info(f"{env.boxes_in_goal - prev_boxes_in_goal} boxes added to receptacle.")
+                self.last_epi_box_in_goal = epi
             policy['memory'].push(self.state, self.action, self.next_state, reward, 1)
 
             # self.state = self.next_state
