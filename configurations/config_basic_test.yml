@@ -1,6 +1,6 @@
 action_freq: 1
 action_type: primitive
-batch_size: 2
+batch_size: 1
 checkpoint_interval: 3000
 checkpoint_path: checkpoint/checkpoint-basic-test.pt
 environment: 3
@@ -13,9 +13,9 @@ lr: 0.0005
 ministep_size: 0.25
 model: resnet
 no_goal_timeout: 1000
-num_boxes: 1
+num_boxes: 6
 num_epochs: 100
-num_of_batches_before_train: 300
+num_of_batches_before_train: 10000
 num_policies: 1
 options: False
 replay_buffer_size: 10000
