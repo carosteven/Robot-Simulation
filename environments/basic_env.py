@@ -52,10 +52,15 @@ class Basic_Env(object):
 
         # Environment
         self.grid_size = config['grid_size'] if config is not None else 10
+        self.gridscale = self.screen_size[0] // self.grid_size
         self.grid_world = np.full((self.grid_size, self.grid_size), '', dtype=object)
 
         # Static barrier walls (lines) that the balls bounce off of
         self._add_static_scenery()
+        
+        # The agent to be controlled
+        self._agent = self._create_agent(vertices=((-14,-14), (-14,14), (14,14), (14,-14)), mass=10, position=(random.randint(1,self.grid_size-2), random.randint(2,self.grid_size-2)), damping=0.99)
+        self.initial_agent_pos = self._agent['robot'].position
 
         self.goal_position = (30,60)
         # self.initial_box_dists = [distance(box.position, self.goal_position) for box in self._boxes]
@@ -67,25 +72,26 @@ class Basic_Env(object):
         self.boxes_in_goal = config['num_boxes'] - self.boxes_remaining
         self._boxes = {}
         for i in range(self.boxes_remaining):
-            pos = (random.randint(1,7), random.randint(3,6))
+            pos = (random.randint(1,self.grid_size-2), random.randint(2,self.grid_size-2))
             occupied = True
             while occupied:
                 occupied = False
+                if pos == self.env_to_grid(self._agent['robot'].position):
+                    occupied = True
+
                 for box in self._boxes.values():
                     if pos == self.env_to_grid(box['body'].position):
                         occupied = True
-                        pos = (random.randint(1,7), random.randint(3,6))
+                
+                if occupied:
+                    pos = (random.randint(1,self.grid_size-2), random.randint(2,self.grid_size-2))
+
             # self._boxes.append(self._create_object(id=i, radius=14, mass=5, position=(4,4), damping=.99))
             self._boxes[f'{i}'] = {}
             self._boxes[f'{i}']['body'] = self._create_object(id=i, radius=14, mass=5, position=pos, damping=.99)
             self._boxes[f'{i}']['initial_dist'] = distance(self._boxes[f'{i}']['body'].position, self.goal_position)
             self._boxes[f'{i}']['collision_occuring'] = False
             self._boxes[f'{i}']['push_occuring'] = False
-
-        # The agent to be controlled
-        self._agent = self._create_agent(vertices=((-14,-14), (-14,14), (14,14), (14,-14)), mass=10, position=(random.randint(1,8), 8), damping=0.99)
-        # self._agent = self._create_agent(vertices=((-14,-14), (-14,14), (14,14), (14,-14)), mass=10, position=(4, 5), damping=0.99)
-        self.initial_agent_pos = self._agent['robot'].position
 
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
@@ -120,23 +126,20 @@ class Basic_Env(object):
         self._done = False
 
     def grid_to_env(self, grid_pos):
-        grid_scale = self.screen_size[0] // self.grid_size
-        return (grid_pos[1]*grid_scale+grid_scale//2, grid_pos[0]*grid_scale+grid_scale//2)
+        return (grid_pos[1]*self.gridscale+self.gridscale//2, grid_pos[0]*self.gridscale+self.gridscale//2)
     
     def env_to_grid(self, env_pos):
-        grid_scale = self.screen_size[0] // self.grid_size
-        return (int(env_pos[1]//grid_scale), int(env_pos[0]//grid_scale))
+        return (int(env_pos[1]//self.gridscale), int(env_pos[0]//self.gridscale))
 
     def _add_static_scenery(self) -> None:
         """
         Create the static bodies
         :return: None
         """
-        grid_scale = self.screen_size[0] // self.grid_size
         static_body = self._space.static_body
 
         static_goal = [
-            pymunk.Poly(static_body, ((0,0), (60,0), (60,120), (0, 120))),
+            pymunk.Poly(static_body, ((0,0), (self.gridscale*2,0), (self.gridscale*2,self.gridscale*2), (0, self.gridscale*2))),
         ]
         
         static_goal[0].color = (0, 255, 0, 255)
@@ -144,25 +147,27 @@ class Basic_Env(object):
         static_goal[0].filter = pymunk.ShapeFilter(categories=0b101)
         self._space.add(*static_goal)
 
-        for i in range(4):
+        for i in range(2):
             for j in range(2):
                 self.grid_world[i][j] = 'g'
 
         # Put gray square in each corner of the screen
         static_border = []
-        for coord in [(9,0), (9,9), (0,9)]:
+        edge = self.grid_size - 1
+        for coord in [(edge,0), (edge,edge), (0,edge)]:
             self.grid_world[coord] = 'w'
             c = self.grid_to_env(coord)
-            static_border.append(pymunk.Poly(static_body, ((c[1]-14, c[0]-14), (c[1]-14, c[0]+14), (c[1]+14, c[0]+14), (c[1]+14, c[0]-14))))
+            c0, c1, c2, c3 = c[0]+self.gridscale//2, c[1]+self.gridscale//2, c[0]-self.gridscale//2, c[1]-self.gridscale//2
+            static_border.append(pymunk.Poly(static_body, ((c0, c1), (c0, c3), (c2, c3), (c2, c1))))
         
         # Label new corners
-        for coord in [(8,0), (9,1), (8,9), (9,8), (0,8), (1,9)]:
+        for coord in [(edge-1,0), (edge,1), (edge-1,edge), (edge,edge-1), (0,edge-1), (1,edge)]:
             self.grid_world[coord] = 'c'
 
         # Create the border walls
         for i in range(self.grid_size +1):
-            static_border.append(pymunk.Segment(static_body, (i*grid_scale,0), (i*grid_scale,self.screen_size[1]), 1))
-            static_border.append(pymunk.Segment(static_body, (0,i*grid_scale), (self.screen_size[0],i*grid_scale), 1))
+            static_border.append(pymunk.Segment(static_body, (i*self.gridscale,0), (i*self.gridscale,self.screen_size[1]), 1))
+            static_border.append(pymunk.Segment(static_body, (0,i*self.gridscale), (self.screen_size[0],i*self.gridscale), 1))
 
         for line in static_border:
             line.elasticity = 0.95
@@ -185,6 +190,7 @@ class Basic_Env(object):
         object_body.velocity_func = custom_damping
         object_body.in_corner = False
         
+        radius = self.gridscale // 2 - 1
         object = pymunk.Poly(object_body, ((-radius, -radius), (-radius, radius), (radius, radius), (radius, -radius)))
         object_body.object = object
         object.color = (255, 0, 0, 255)
@@ -207,7 +213,8 @@ class Basic_Env(object):
         robot_body.position = self.grid_to_env(position)
         robot_body.damping = damping
 
-        robot = pymunk.Poly(robot_body, vertices)
+        radius = self.gridscale // 2 - 1
+        robot = pymunk.Poly(robot_body, ((-radius, -radius), (-radius, radius), (radius, radius), (radius, -radius)))
         robot.label = 'robot'
         robot.mass = mass
         robot.elasticity = elasticity
