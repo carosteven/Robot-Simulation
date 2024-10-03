@@ -48,7 +48,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 class Train_DQL():
-    def __init__(self, config):
+    def __init__(self, config, test):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.action_type = config['action_type']
         self.options = config['options']
@@ -58,6 +58,7 @@ class Train_DQL():
         self.no_goal_timeout = config['no_goal_timeout']
         self.num_epochs = config['num_epochs']
         self.num_of_batches_before_train = config['num_of_batches_before_train']
+        self.test = test
         # Get number of actions from env
         self.n_actions = len(env.available_actions) if config['action_type'] == 'primitive' else env.screen_size[0]*env.screen_size[1]
 
@@ -149,15 +150,18 @@ class Train_DQL():
         epsilon = self.STARTING_EPSILON
 
         if os.path.exists(self.checkpoint_path):
-            training_state = torch.load(self.checkpoint_path)
-            self.epoch = training_state['epoch']
-            policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
-            target_net.load_state_dict(training_state[f'target_state_dict_{hierarchy}'])
-            optimizer.load_state_dict(training_state[f'optimizer_state_dict_{hierarchy}'])
-            memory.memory = training_state[f'memory_{hierarchy}']
-            loss = training_state[f'loss_{hierarchy}']
-            epsilon = training_state[f'epsilon_{hierarchy}']
-            logging.info(f"Training state restored at epoch {self.epoch}")
+            if self.test:
+                policy_net.load_state_dict(torch.load(self.checkpoint_path, map_location=self.device))
+            else:
+                training_state = torch.load(self.checkpoint_path)
+                self.epoch = training_state['epoch']
+                policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
+                target_net.load_state_dict(training_state[f'target_state_dict_{hierarchy}'])
+                optimizer.load_state_dict(training_state[f'optimizer_state_dict_{hierarchy}'])
+                memory.memory = training_state[f'memory_{hierarchy}']
+                loss = training_state[f'loss_{hierarchy}']
+                epsilon = training_state[f'epsilon_{hierarchy}']
+                logging.info(f"Training state restored at epoch {self.epoch}")
         else:
             logging.info("No checkpoint detected, starting from initial state")
 
@@ -193,7 +197,7 @@ class Train_DQL():
     def get_action(self, policy):
         # With probability EPSILON, choose a random action
         # Rest of the time, choose argmax_a Q(s, a) 
-        if np.random.rand() < policy['epsilon']:
+        if np.random.rand() < policy['epsilon'] and not self.test:
             if policy['n_actions'] > 16:
                 action = np.random.randint(policy['n_actions']/4) # /4 because the screen is 304x304 but the action space is 152x152
             else:
@@ -285,8 +289,6 @@ class Train_DQL():
         multiinfo_batch[:, 3] = goal_distance / (304.0/2)
 
         return multiinfo_batch
-
-
     
     def update_networks(self, policy, epi):
         # Sample a minibatch (s, a, r, s', d)
@@ -335,12 +337,12 @@ class Train_DQL():
         return optimizer
 
     def train(self):
-
         start_time = time.time()
         for i in range(self.num_policies):
             self.policies[i]['policy_net'] = self.policies[i]['policy_net'].to(self.device)
-            self.policies[i]['target_net'] = self.policies[i]['target_net'].to(self.device)
-            self.policies[i]['optimizer']  = self.optimizer_to_dev(self.policies[i]['optimizer'])
+            if not self.test:
+                self.policies[i]['target_net'] = self.policies[i]['target_net'].to(self.device)
+                self.policies[i]['optimizer']  = self.optimizer_to_dev(self.policies[i]['optimizer'])
 
         for epoch in tqdm(range(self.num_epochs)):
             # Reset environment and get new state
@@ -364,10 +366,11 @@ class Train_DQL():
                     elif option == 2:
                         reward, epi, done = self.sln_action_control(self.policies[1], frame, epi)
                     
-                    self.policies[0]['memory'].push(self.state, option, self.next_state, reward, 1)
+                    if not self.test:
+                        self.policies[0]['memory'].push(self.state, option, self.next_state, reward, 1)
 
-                    if len(self.policies[0]['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
-                        self.update_networks(self.policies[0], epi)
+                        if len(self.policies[0]['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
+                            self.update_networks(self.policies[0], epi)
 
                 else:
                     if self.action_type == 'primitive':
@@ -379,7 +382,7 @@ class Train_DQL():
                 self.state = self.next_state
 
                 cur_time = time.time()
-                if cur_time - start_time > self.checkpoint_interval:
+                if cur_time - start_time > self.checkpoint_interval and not self.test:
                     self.commit_state()
                     start_time = cur_time
                 
@@ -466,6 +469,8 @@ class Train_DQL():
             # Play an episode and log episodic reward
             self.action = self.get_action(policy)
             env.step(env.available_actions[self.action], primitive=True)
+            if self.test:
+                print(env.available_actions[self.action])
 
             epi += 1
         
@@ -481,13 +486,13 @@ class Train_DQL():
             if env.boxes_in_goal > prev_boxes_in_goal:
                 logging.info(f"{env.boxes_in_goal - prev_boxes_in_goal} boxes added to receptacle.")
                 self.last_epi_box_in_goal = epi
-            policy['memory'].push(self.state, self.action, self.next_state, reward, 1)
+            
+            if not self.test:
+                policy['memory'].push(self.state, self.action, self.next_state, reward, 1)
 
-            # self.state = self.next_state
-        
-            # Train after collecting sufficient experience
-            if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
-                self.update_networks(policy, epi)
+                # Train after collecting sufficient experience
+                if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
+                    self.update_networks(policy, epi)
 
         elif frame % self.action_freq != 0:
             env.step(None, primitive=True)
@@ -496,11 +501,15 @@ class Train_DQL():
     
 
 def main(args):
+    test = args.test
     with open(args.config_file) as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
     global env
     if config['log_file'] is not None:
-        logging.basicConfig(filename=config['log_file'],level=logging.DEBUG)
+        if test:
+            logging.basicConfig(filename=config['log_file'][:-4]+'_test.log',level=logging.DEBUG)
+        else:
+            logging.basicConfig(filename=config['log_file'],level=logging.DEBUG)
     
     logging.info("starting training script")
 
@@ -513,7 +522,7 @@ def main(args):
         env.take_action = env.straight_line_navigation
     '''
 
-    train = Train_DQL(config)
+    train = Train_DQL(config, test)
     
     # check if the checkpoint exists and try to resume from the last checkpoint
     # if you are saving for every epoch, you can skip the part about
@@ -534,7 +543,15 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        default= 'configurations/config_basic_test.yml'
+        # default= 'configurations/config_basic_test.yml'
+        default= 'configurations/config_basic_primitive.yml'
+    )
+
+    parser.add_argument(
+        '--test',
+        type=bool,
+        help='testing mode',
+        default= False
     )
 
     main(parser.parse_args())
