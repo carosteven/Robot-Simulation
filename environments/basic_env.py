@@ -28,6 +28,7 @@ class Basic_Env(object):
         self.config = config
 
         self.state_type = config['state_type'] if config is not None else 'vision'
+        self.state_info =  config['state_info'] if config is not None else 'colour'
 
         # Space
         self._space = pymunk.Space()
@@ -52,20 +53,39 @@ class Basic_Env(object):
         # Environment
         self.grid_size = config['grid_size'] if config is not None else 10
         self.grid_world = np.full((self.grid_size, self.grid_size), '', dtype=object)
+
+        # Static barrier walls (lines) that the balls bounce off of
+        self._add_static_scenery()
+
+        self.goal_position = (30,60)
+        # self.initial_box_dists = [distance(box.position, self.goal_position) for box in self._boxes]
+        # self.initial_object_dist = distance(self._object.position, self.goal_position)
         
         # The objects to be pushed
         self.box_uncertainty = config['box_uncertainty'] if config is not None else 0.1
         self.boxes_remaining = config['num_boxes'] if config is not None else 1
-        self._boxes = []
+        self.boxes_in_goal = config['num_boxes'] - self.boxes_remaining
+        self._boxes = {}
         for i in range(self.boxes_remaining):
-            self._boxes.append(self._create_object(id=i, radius=14, mass=5, position=(random.randint(5,8), random.randint(2,6)), damping=.99))
+            pos = (random.randint(1,7), random.randint(3,6))
+            occupied = True
+            while occupied:
+                occupied = False
+                for box in self._boxes.values():
+                    if pos == self.env_to_grid(box['body'].position):
+                        occupied = True
+                        pos = (random.randint(1,7), random.randint(3,6))
+            # self._boxes.append(self._create_object(id=i, radius=14, mass=5, position=(4,4), damping=.99))
+            self._boxes[f'{i}'] = {}
+            self._boxes[f'{i}']['body'] = self._create_object(id=i, radius=14, mass=5, position=pos, damping=.99)
+            self._boxes[f'{i}']['initial_dist'] = distance(self._boxes[f'{i}']['body'].position, self.goal_position)
+            self._boxes[f'{i}']['collision_occuring'] = False
+            self._boxes[f'{i}']['push_occuring'] = False
 
         # The agent to be controlled
         self._agent = self._create_agent(vertices=((-14,-14), (-14,14), (14,14), (14,-14)), mass=10, position=(random.randint(1,8), 8), damping=0.99)
+        # self._agent = self._create_agent(vertices=((-14,-14), (-14,14), (14,14), (14,-14)), mass=10, position=(4, 5), damping=0.99)
         self.initial_agent_pos = self._agent['robot'].position
-
-        # Static barrier walls (lines) that the balls bounce off of
-        self._add_static_scenery()
 
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
@@ -94,10 +114,6 @@ class Basic_Env(object):
         # Available actions
         self.available_actions = ['N', 'E', 'S', 'W', 'NE', 'SE', 'SW', 'NW']
         self.action_completed = False
-
-        self.goal_position = (25,75)
-        self.initial_box_dists = [distance(box.position, self.goal_position) for box in self._boxes]
-        # self.initial_object_dist = distance(self._object.position, self.goal_position)
 
         # Execution control
         self._running = True
@@ -153,6 +169,7 @@ class Basic_Env(object):
             line.friction = 0.9
             line.collision_type = 1
             line.filter = pymunk.ShapeFilter(categories=0b10)
+            line.color = (0, 0, 0, 255)
         self._space.add(*static_border)
 
     def _create_object(self, id: int, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
@@ -169,6 +186,7 @@ class Basic_Env(object):
         object_body.in_corner = False
         
         object = pymunk.Poly(object_body, ((-radius, -radius), (-radius, radius), (radius, radius), (radius, -radius)))
+        object_body.object = object
         object.color = (255, 0, 0, 255)
         object.mass = mass
         object.elasticity = elasticity
@@ -216,8 +234,8 @@ class Basic_Env(object):
             self._actions(action)
             self._update()
             self._clear_screen()
-            # pygame.draw.circle(self._screen, (0,0,0), (60,243), 5)
             self._draw_objects()
+            # pygame.draw.circle(self._screen, (0,0,0), (self.goal_position), 5)
             self.get_state()
             
             pygame.display.flip()
@@ -226,12 +244,15 @@ class Basic_Env(object):
             pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
 
             if action is not None:
-                print(self.reward_from_last_action)
+                # print(self.reward_from_last_action)
                 self.reward += self.reward_from_last_action
                 self.reward_from_last_action = 0
 
             # Calculate reward
             self.reward_from_last_action += self.get_reward(True if action is not None else False)
+            if action is not None:
+                print(self.reward_from_last_action)
+
             # self.reward = self.get_reward(True if action is not None else False)
 
             # Calculate reward
@@ -267,7 +288,6 @@ class Basic_Env(object):
         # Delay fixed time between frames
         self._clock.tick(110)
         pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
-
         if action is not None:
             self.reward += self.reward_from_last_action
             self.reward_from_last_action = 0
@@ -300,7 +320,9 @@ class Basic_Env(object):
         action = None
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                self._running = False
+                # self._actions(self.available_actions[random.randint(0,7)])
+                self._done = True
+                # self._running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self._running = False
 
@@ -324,6 +346,8 @@ class Basic_Env(object):
                         action = 'W'
                     elif keys[pygame.K_RIGHT]:
                         action = 'E'
+                    elif keys[pygame.K_SPACE]:
+                        print(self.grid_world)
         return action
     
     def _update(self) -> None:
@@ -370,9 +394,18 @@ class Basic_Env(object):
         elif action == 'SW':
             return (grid_coords[0]+ (1 * rand_1), grid_coords[1]- (1 * rand_2))
         elif action == 'NW':
-            return (grid_coords[0]- (1 * rand_1), grid_coords[1]- (1 * rand_2))        
+            return (grid_coords[0]- (1 * rand_1), grid_coords[1]- (1 * rand_2)) 
+
+    def get_box_index(self, grid_coords) -> int:
+        """
+        Get the index of the box in the list of boxes
+        """
+        for box in self._boxes.values():
+            if grid_coords == self.env_to_grid(box['body'].position):
+                return box['body'].label[-1]
+        return -1       
     
-    def check_collision(self, grid_coords, action, obj_type) -> bool:
+    def check_collision(self, grid_coords, action, obj_type, box_idx=None) -> bool:
         """
         Check if the object will collide with the walls or other objects
         """
@@ -388,26 +421,32 @@ class Basic_Env(object):
             if obj_type == 'r':
                 self.is_pushing = True
             new_box_coords = self.move_box(grid_coords, action)
-            if self.check_collision(new_box_coords, action, 'b'):
+            box_idx = self.get_box_index(grid_coords)
+            num_boxes = len(self._boxes)
+            if self.check_collision(new_box_coords, action, 'b', box_idx):
                 collision_detected = True
-            elif not self._done:
-                self._boxes[0].position = self.grid_to_env(new_box_coords)
+            elif self.grid_world[new_box_coords] != 'g':
+                self._boxes[box_idx]['body'].position = self.grid_to_env(new_box_coords)
                 self.grid_world[grid_coords] = self.grid_world[grid_coords][:-1]
-                new_grid_label = self.grid_world[new_box_coords] + 'b'
                 self.grid_world[new_box_coords] += "b"
+            elif self.grid_world[new_box_coords] == 'g':
+                self.grid_world[grid_coords] = self.grid_world[grid_coords][:-1]
         
         elif grid_label == 'g':
             if obj_type == 'r':
                 collision_detected = True
                 self.collision_occuring = True
             elif obj_type == 'b':
-                self._space.remove(self._boxes[0])
-                self._boxes.pop(0)
-                self._done = True
+                self._space.remove(self._boxes[box_idx]['body'], self._boxes[box_idx]['body'].object)
+                self._boxes.pop(box_idx)
         
         elif grid_label == 'c':
             if obj_type == 'b':
-                self._boxes[0].in_corner = True
+                # box_idx = self.get_box_index(grid_coords)
+                self._boxes[box_idx]['body'].in_corner = True
+        
+        if len(self._boxes) == 0:
+            self._done = True
 
         return collision_detected
 
@@ -448,8 +487,17 @@ class Basic_Env(object):
         """
         Gets integer pixel values from screen
         """
-        self.state = (np.array(self.pxarr).astype(np.float64)/2e32).transpose()
-        self.state = np.resize(rescale(self.state, 0.5)*2e32, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
+        state = (np.array(self.pxarr).astype(np.float64)/2e32).transpose()
+        state = np.resize(rescale(state, 0.5)*2e32, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
+        
+        if self.state_info == 'colour':
+            self.state = state
+        
+        elif self.state_info == 'multiinfo':
+            self.state = []
+            self.state.append(state)
+            # append agent position
+            self.state.append(self._agent['robot'].position)
 
     def get_reward(self, action_taken: bool):
         """
@@ -462,26 +510,29 @@ class Basic_Env(object):
         reward_tracker = ""
         if action_taken:
             reward -= self.action_penalty
-            reward_tracker += ":action penalty: "
+            # reward_tracker += ":action penalty: "
 
         if self.collision_occuring:
             reward -= self.collision_penalty
-            reward_tracker += ":collision penalty: "
+            reward_tracker += f":collision penalty: {self.collision_penalty} "
         self.collision_occuring = False
 
         if self.is_pushing:
             reward += self.push_reward
-            reward_tracker += ":push: "
+            reward_tracker += f":push: {self.push_reward} "
         self.is_pushing = False
 
-        for box in self._boxes:
-            if box.in_corner:
+        for box in self._boxes.values():
+            if box['body'].in_corner:
                 reward -= self.corner_penalty
-            box.in_corner = False
+            box['body'].in_corner = False
 
-        self.boxes_in_goal = self.boxes_remaining-len(self._boxes)
-        reward += (self.boxes_in_goal)*self.obj_to_goal_reward
+        new_box_in_goal = self.boxes_remaining-len(self._boxes)
+        if new_box_in_goal > 0:
+            reward_tracker += f":goal: {(new_box_in_goal)*self.obj_to_goal_reward} "
+        reward += (new_box_in_goal)*self.obj_to_goal_reward
         self.boxes_remaining = len(self._boxes)
+        self.boxes_in_goal = self.config['num_boxes'] - self.boxes_remaining
         
         '''
         if not self.is_pushing and not self.collision_occuring and action_taken:
@@ -491,16 +542,20 @@ class Basic_Env(object):
         # print(reward_tracker, self.reward_from_last_action)
 
         # Calculate reward for pushing object closer to goal
-        for i, box in enumerate(self._boxes):
-            dist = distance(box.position, self.goal_position)
-            dist_moved = self.initial_box_dists[i] - dist
-            self.initial_box_dists[i] = dist
+        dist_tracker = 0
+        for box in self._boxes.values():
+            dist = distance(box['body'].position, self.goal_position)
+            dist_moved = box['initial_dist'] - dist
+            box['initial_dist'] = dist
             reward += self.partial_rewards_scale*dist_moved
+            dist_tracker += dist_moved*self.partial_rewards_scale
+        reward_tracker += f":dist moved: {dist_tracker} "
         # dist = distance(self._object.position, self.goal_position)
         # dist_moved = self.initial_object_dist - dist
         # self.initial_object_dist = dist
         # reward += self.partial_rewards_scale*dist_moved
-
+        # if action_taken:
+        #     print(reward_tracker)
         return reward
     
     def reset(self):

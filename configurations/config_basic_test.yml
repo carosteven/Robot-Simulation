@@ -1,6 +1,6 @@
 action_freq: 1
 action_type: primitive
-batch_size: 2
+batch_size: 1
 checkpoint_interval: 3000
 checkpoint_path: checkpoint/checkpoint-basic-test.pt
 environment: 3
@@ -13,24 +13,26 @@ lr: 0.0005
 ministep_size: 0.25
 model: resnet
 no_goal_timeout: 1000
-num_boxes: 1
+num_boxes: 6
 num_epochs: 100
-num_of_batches_before_train: 1000
+num_of_batches_before_train: 10000
 num_policies: 1
 options: False
 replay_buffer_size: 10000
 state_type: vision
 target_update_freq: 1000
 
+state_info: multiinfo
+
 # Rewards
 collision_penalty:      5
 action_penalty:         0
 no_movement_penalty:    0
-push_reward:            0
+push_reward:            5
 obj_to_goal_reward:     100
 exploration_reward:     0
-partial_rewards_scale:  2
-corner_penalty:         10
+partial_rewards_scale:  1
+corner_penalty:         0
 
 # Only need if environment is 3
 box_uncertainty: 0.1

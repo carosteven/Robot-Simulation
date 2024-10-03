@@ -16,7 +16,7 @@ import environments
 import models
 
 # with open('configurations/config_basic_primitive.yml') as file:
-with open('configurations/config_basic_primitive.yml') as file:
+with open('configurations/config_test.yml') as file:
   config = yaml.load(file, Loader=yaml.FullLoader)
 
 env = environments.selector(config)
@@ -32,7 +32,7 @@ action_freq = config['action_freq']
 state = torch.tensor(env.reset(), dtype=torch.int32, device=device).unsqueeze(0)
 n_observations = 3 #len(state)
 # checkpoint_path = 'model - no pushing.pt'
-checkpoint_path = 'model_weights/model_basic-test.pt'
+checkpoint_path = 'model_weights/model_options.pt'
 
 options = config['options']
 

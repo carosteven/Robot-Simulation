@@ -48,7 +48,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 class Train_DQL():
-    def __init__(self, config):
+    def __init__(self, config, test):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.action_type = config['action_type']
         self.options = config['options']
@@ -58,10 +58,12 @@ class Train_DQL():
         self.no_goal_timeout = config['no_goal_timeout']
         self.num_epochs = config['num_epochs']
         self.num_of_batches_before_train = config['num_of_batches_before_train']
+        self.test = test
         # Get number of actions from env
         self.n_actions = len(env.available_actions) if config['action_type'] == 'primitive' else env.screen_size[0]*env.screen_size[1]
 
         self.action_freq = config['action_freq']
+        self.state_info = config['state_info']
 
         # Global variables
         self.BATCH_SIZE = config['batch_size']                  # How many examples to sample per train step
@@ -74,10 +76,17 @@ class Train_DQL():
 
         self.EPSILON = self.STARTING_EPSILON
 
-        # Get number of state observations
-        self.state = torch.tensor(env.reset(), dtype=torch.int32, device=self.device).unsqueeze(0)
-        # self.n_observations = len(self.state)
-        self.n_observations = 3 # (channels)
+        if self.state_info == 'colour':
+            self.transform_state = self.trans_colour_state
+            # Get number of state observations
+            # self.n_observations = len(self.state)
+            self.n_observations = 3 # (channels)
+
+        elif self.state_info == 'multiinfo':
+            self.transform_state = self.trans_multiinfo_state
+            self.n_observations = 4 # (channels)
+
+        self.state = self.get_state(env.reset())
         self.next_state = None
         self.action = None
         
@@ -95,6 +104,19 @@ class Train_DQL():
         self.steps_done = 0 # for exploration
         self.contact_made = False # end episode if agent does not push box after x actions
         self.last_epi_box_in_goal = 0
+    
+    def get_state(self, raw_state):
+        if self.state_info == 'colour':
+            state = torch.tensor(raw_state, dtype=torch.int32, device=self.device).unsqueeze(0)
+        elif self.state_info == 'multiinfo':
+            state = []
+            state.append(torch.tensor(raw_state[0], dtype=torch.int32, device=self.device).unsqueeze(0))
+            state.append(torch.zeros_like(state[0], device=self.device, dtype=torch.int32))
+            state[1][0,0,0,0] = raw_state[1][0]
+            state[1][0,0,0,1] = raw_state[1][1]
+            state = torch.stack(state, dim=1)
+        return state
+
 
     def create_or_restore_training_state(self, state_type, model, buffer_size, hierarchy=0):
         if self.options and hierarchy == 0:
@@ -128,16 +150,18 @@ class Train_DQL():
         epsilon = self.STARTING_EPSILON
 
         if os.path.exists(self.checkpoint_path):
-            training_state = torch.load(self.checkpoint_path)
-            # print(training_state[f'policy_state_dict_0'])
-            self.epoch = training_state['epoch']
-            policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
-            target_net.load_state_dict(training_state[f'target_state_dict_{hierarchy}'])
-            optimizer.load_state_dict(training_state[f'optimizer_state_dict_{hierarchy}'])
-            memory.memory = training_state[f'memory_{hierarchy}']
-            loss = training_state[f'loss_{hierarchy}']
-            epsilon = training_state[f'epsilon_{hierarchy}']
-            logging.info(f"Training state restored at epoch {self.epoch}")
+            if self.test:
+                policy_net.load_state_dict(torch.load(self.checkpoint_path, map_location=self.device))
+            else:
+                training_state = torch.load(self.checkpoint_path)
+                self.epoch = training_state['epoch']
+                policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
+                target_net.load_state_dict(training_state[f'target_state_dict_{hierarchy}'])
+                optimizer.load_state_dict(training_state[f'optimizer_state_dict_{hierarchy}'])
+                memory.memory = training_state[f'memory_{hierarchy}']
+                loss = training_state[f'loss_{hierarchy}']
+                epsilon = training_state[f'epsilon_{hierarchy}']
+                logging.info(f"Training state restored at epoch {self.epoch}")
         else:
             logging.info("No checkpoint detected, starting from initial state")
 
@@ -173,7 +197,7 @@ class Train_DQL():
     def get_action(self, policy):
         # With probability EPSILON, choose a random action
         # Rest of the time, choose argmax_a Q(s, a) 
-        if np.random.rand() < policy['epsilon']:
+        if np.random.rand() < policy['epsilon'] and not self.test:
             if policy['n_actions'] > 16:
                 action = np.random.randint(policy['n_actions']/4) # /4 because the screen is 304x304 but the action space is 152x152
             else:
@@ -194,7 +218,7 @@ class Train_DQL():
 
         return action
     
-    def transform_state(self, state_batch):
+    def trans_colour_state(self, state_batch):
         colour_batch = torch.zeros((state_batch.shape[0], 3, state_batch.shape[2], state_batch.shape[3]),device=self.device,dtype=torch.float32)
         colour_batch[:,0] = torch.bitwise_and(torch.bitwise_right_shift(state_batch[:,0], 16), 255) # Red channel
         colour_batch[:, 1] = torch.bitwise_and(torch.bitwise_right_shift(state_batch[:, 0], 8), 255)  # Green channel
@@ -202,8 +226,71 @@ class Train_DQL():
         colour_batch = colour_batch / 255.0
         return colour_batch
     
-    def update_networks(self, policy, epi):
+    def trans_multiinfo_state(self, state_batch):
+        # Returns a tensor of shape (batch_size, 4, height, width)
+        # Channel 0: Grayscale image
+        # Channel 1: Mask of the agent
+        # Channel 2: Distance from the agent to every pixel
+        # Channel 3: Distance from the goal to every pixel
+        # state_batch is a tensor of shape (batch_size, 2)
+        # where the first element is an integer rgb array of the environment and the second element is the position of the agent
+        
+        # Extract the rgb array and the agent position
+        image = state_batch[:, 0, 0]
+        agent_pos = state_batch[:,1,0,0,0:2]/2
+        agent_pos = agent_pos.int()
+
+        # Get the height and width of the image
+        height, width = image.shape[1], image.shape[2]
+
+        # Create a tensor of shape (batch_size, 4, height, width) filled with zeros
+        multiinfo_batch = torch.zeros((state_batch.shape[0], 4, height, width), device=self.device, dtype=torch.float32)
+
+        # Extract the red, green, and blue channels from the rgb array
+        red = torch.bitwise_and(torch.bitwise_right_shift(image, 16), 255)
+        green = torch.bitwise_and(torch.bitwise_right_shift(image, 8), 255)
+        blue = torch.bitwise_and(image, 255)
+
+        # Calculate the grayscale image
+        grayscale = 0.2989 * red + 0.5870 * green + 0.1140 * blue
+
+        # Calculate the mask of the agent (28 pixels (scaled so 14) around the agent)
+        agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
+        y_indices = y_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
+        x_indices = x_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
+        
+        agent_mask = ((x_indices >= (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) - 7)) & 
+                  (x_indices < (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) + 7)) & 
+                  (y_indices >= (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) - 7)) & 
+                  (y_indices < (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) + 7))).float()
+
+        # Calculate the distance from the agent to every pixel
+        y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
+        y_indices, x_indices = y_indices.unsqueeze(0), x_indices.unsqueeze(0)
+        agent_distance = torch.sqrt((x_indices - agent_pos[:, 0].unsqueeze(1).unsqueeze(2))**2 + (y_indices - agent_pos[:, 1].unsqueeze(1).unsqueeze(2))**2)
+
+        # Calculate the distance from the goal to every pixel
+        goal_distance = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        goal_position = torch.tensor(env.goal_position, device=self.device, dtype=torch.float32) / 2
+        goal_x, goal_y = goal_position[0], goal_position[1]
+        goal_distance = torch.sqrt((x_indices - goal_x)**2 + (y_indices - goal_y)**2)
+
+        # As a test, make a heatmap of the goal distance
+        # plt.imshow(agent_mask[0].cpu().numpy())
+        # plt.show()
+        # input()
+
+        # Fill the multiinfo tensor with the grayscale image, the agent mask, the agent distance, and the goal distance
+        multiinfo_batch[:, 0] = grayscale / 255.0
+        multiinfo_batch[:, 1] = agent_mask
+        multiinfo_batch[:, 2] = agent_distance / (304.0/2)
+        multiinfo_batch[:, 3] = goal_distance / (304.0/2)
+
+        return multiinfo_batch
     
+    def update_networks(self, policy, epi):
         # Sample a minibatch (s, a, r, s', d)
         # Each variable is a vector of corresponding values
         transitions = policy['memory'].sample(self.BATCH_SIZE)
@@ -229,7 +316,7 @@ class Train_DQL():
 
         # Detach y since it is the target. Target values should
         # be kept fixed.
-        loss = torch.nn.SmoothL1Loss()(targets.detach(), qvalues)
+        loss = torch.nn.SmoothL1Loss()(targets.detach().view_as(qvalues), qvalues)
 
         # Backpropagation
         policy['optimizer'].zero_grad()
@@ -250,16 +337,16 @@ class Train_DQL():
         return optimizer
 
     def train(self):
-
         start_time = time.time()
         for i in range(self.num_policies):
             self.policies[i]['policy_net'] = self.policies[i]['policy_net'].to(self.device)
-            self.policies[i]['target_net'] = self.policies[i]['target_net'].to(self.device)
-            self.policies[i]['optimizer']  = self.optimizer_to_dev(self.policies[i]['optimizer'])
+            if not self.test:
+                self.policies[i]['target_net'] = self.policies[i]['target_net'].to(self.device)
+                self.policies[i]['optimizer']  = self.optimizer_to_dev(self.policies[i]['optimizer'])
 
         for epoch in tqdm(range(self.num_epochs)):
             # Reset environment and get new state
-            self.state = torch.tensor(env.reset(), dtype=torch.int32, device=self.device).unsqueeze(0)
+            self.state = self.get_state(env.reset())
             self.contact_made = False
             logging.info(f'Epoch {self.epoch}')
 
@@ -279,10 +366,11 @@ class Train_DQL():
                     elif option == 2:
                         reward, epi, done = self.sln_action_control(self.policies[1], frame, epi)
                     
-                    self.policies[0]['memory'].push(self.state, option, self.next_state, reward, 1)
+                    if not self.test:
+                        self.policies[0]['memory'].push(self.state, option, self.next_state, reward, 1)
 
-                    if len(self.policies[0]['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
-                        self.update_networks(self.policies[0], epi)
+                        if len(self.policies[0]['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
+                            self.update_networks(self.policies[0], epi)
 
                 else:
                     if self.action_type == 'primitive':
@@ -294,7 +382,7 @@ class Train_DQL():
                 self.state = self.next_state
 
                 cur_time = time.time()
-                if cur_time - start_time > self.checkpoint_interval:
+                if cur_time - start_time > self.checkpoint_interval and not self.test:
                     self.commit_state()
                     start_time = cur_time
                 
@@ -371,12 +459,18 @@ class Train_DQL():
             env.action_completed = False
             epi += 1
             total_reward = torch.tensor([total_reward], device=self.device)
+            if env.boxes_in_goal != 0:
+                logging.info(f"{env.boxes_in_goal} boxes added to receptacle.")
+                self.last_epi_box_in_goal = epi
             return total_reward, epi, done
 
         if frame % self.action_freq == 0:
+            prev_boxes_in_goal = env.boxes_in_goal
             # Play an episode and log episodic reward
             self.action = self.get_action(policy)
             env.step(env.available_actions[self.action], primitive=True)
+            if self.test:
+                print(env.available_actions[self.action])
 
             epi += 1
         
@@ -386,16 +480,19 @@ class Train_DQL():
             if done:
                 self.next_state = None
             else:
-                self.next_state = torch.tensor(next_state, dtype=torch.int32, device=self.device).unsqueeze(0)
-                
+                self.next_state = self.get_state(next_state)
             reward = torch.tensor([reward], device=self.device)
-            policy['memory'].push(self.state, self.action, self.next_state, reward, 1)
+            # print(env.boxes_in_goal)
+            if env.boxes_in_goal > prev_boxes_in_goal:
+                logging.info(f"{env.boxes_in_goal - prev_boxes_in_goal} boxes added to receptacle.")
+                self.last_epi_box_in_goal = epi
+            
+            if not self.test:
+                policy['memory'].push(self.state, self.action, self.next_state, reward, 1)
 
-            # self.state = self.next_state
-        
-            # Train after collecting sufficient experience
-            if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
-                self.update_networks(policy, epi)
+                # Train after collecting sufficient experience
+                if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
+                    self.update_networks(policy, epi)
 
         elif frame % self.action_freq != 0:
             env.step(None, primitive=True)
@@ -404,11 +501,15 @@ class Train_DQL():
     
 
 def main(args):
+    test = args.test
     with open(args.config_file) as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
     global env
     if config['log_file'] is not None:
-        logging.basicConfig(filename=config['log_file'],level=logging.DEBUG)
+        if test:
+            logging.basicConfig(filename=config['log_file'][:-4]+'_test.log',level=logging.DEBUG)
+        else:
+            logging.basicConfig(filename=config['log_file'],level=logging.DEBUG)
     
     logging.info("starting training script")
 
@@ -421,7 +522,7 @@ def main(args):
         env.take_action = env.straight_line_navigation
     '''
 
-    train = Train_DQL(config)
+    train = Train_DQL(config, test)
     
     # check if the checkpoint exists and try to resume from the last checkpoint
     # if you are saving for every epoch, you can skip the part about
@@ -442,7 +543,15 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
+        # default= 'configurations/config_basic_test.yml'
         default= 'configurations/config_basic_primitive.yml'
+    )
+
+    parser.add_argument(
+        '--test',
+        type=bool,
+        help='testing mode',
+        default= False
     )
 
     main(parser.parse_args())
