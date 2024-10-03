@@ -320,7 +320,9 @@ class Basic_Env(object):
         action = None
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                self._running = False
+                # self._actions(self.available_actions[random.randint(0,7)])
+                self._done = True
+                # self._running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self._running = False
 
