@@ -12,7 +12,7 @@ log_file: output_logs/train-basic-test.log
 lr: 0.0005
 ministep_size: 0.25
 model: resnet
-no_goal_timeout: 1000
+no_goal_timeout: 100
 num_boxes: 6
 num_epochs: 100
 num_of_batches_before_train: 10000

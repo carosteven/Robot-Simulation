@@ -1,4 +1,4 @@
-import matplotlib
+import matplotlib.pyplot as plt
 import math
 import random
 import numpy as np
@@ -15,30 +15,23 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 import os
+import yaml
 
 import logging
-logging.getLogger('pymunk').propagate = False
 
 import environments
 import models
 
+from PIL import Image
+
+logging.getLogger('pymunk').propagate = False
+
 env = None
-'''
-TODO add more info to log
-TODO make resnet predict two actions
-TODO use multiple GPUs
-'''
 
 Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
+                        ('state', 'action', 'next_state', 'reward', 'distance'))
 
-BATCH_SIZE = 128    # BATCH_SIZE is the number of transitions sampled from the replay buffer
-GAMMA = 0.99        # GAMMA is the discount factor
-EPS_START = 0.9     # EPS_START is the starting value of epsilon
-EPS_END = 0.05      # EPS_END is the final value of epsilon
-EPS_DECAY = 1000    # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
-TAU = 0.005         # TAU is the update rate of the target network
-LR = 1e-4           # LR is the learning rate of the ``AdamW`` optimizer
+
 
 class ReplayMemory(object):
     def __init__(self, capacity):
@@ -54,64 +47,141 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self.memory)
 
-
-
 class Train_DQL():
-    def __init__(self, state_type, checkpoint_path, checkpoint_interval, num_epoch):
+    def __init__(self, config, test):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        self.checkpoint_path = checkpoint_path
-        self.checkpoint_interval = checkpoint_interval
-        self.num_epoch = num_epoch
+        self.action_type = config['action_type']
+        self.options = config['options']
+        self.num_policies = config['num_policies']
+        self.checkpoint_path = config['checkpoint_path']
+        self.checkpoint_interval = config['checkpoint_interval']
+        self.no_goal_timeout = config['no_goal_timeout']
+        self.num_epochs = config['num_epochs']
+        self.num_of_batches_before_train = config['num_of_batches_before_train']
+        self.test = test
         # Get number of actions from env
-        self.n_actions = len(env.available_actions)
-        # Get number of state observations
-        self.state = env.reset() # state, info = env.reset()
-        self.n_observations = len(self.state)
+        self.n_actions = len(env.available_actions) if config['action_type'] == 'primitive' else env.screen_size[0]*env.screen_size[1]
+
+        self.action_freq = config['action_freq']
+        self.state_info = config['state_info']
+
+        # Global variables
+        self.BATCH_SIZE = config['batch_size']                  # How many examples to sample per train step
+        self.GAMMA = config['gamma']                            # Discount factor in episodic reward objective
+        self.LEARNING_RATE = config['lr']                       # Learning rate for Adam optimizer
+        self.TARGET_UPDATE_FREQ = config['target_update_freq']  # Target network update frequency
+        self.STARTING_EPSILON = config['epsilon_start']         # Starting epsilon
+        self.STEPS_MAX = config['epsilon_steps']                # Gradually reduce epsilon over these many steps
+        self.EPSILON_END = config['epsilon_end']                # At the end, keep epsilon at this value
+
+        self.EPSILON = self.STARTING_EPSILON
+
+        if self.state_info == 'colour':
+            self.transform_state = self.trans_colour_state
+            # Get number of state observations
+            # self.n_observations = len(self.state)
+            self.n_observations = 3 # (channels)
+
+        elif self.state_info == 'multiinfo':
+            self.transform_state = self.trans_multiinfo_state
+            self.n_observations = 4 # (channels)
+
+        self.state = self.get_state(env.reset())
+        self.next_state = None
+        self.action = None
         
-        self.create_or_restore_training_state(state_type)
+        self.policies = []
+        for i in range(self.num_policies):
+            policy = self.create_or_restore_training_state(config['state_type'], config['model'], config['replay_buffer_size'], hierarchy=i)
+            self.policies.append(policy)
 
+        if self.options:
+            self.policies[0]['n_actions'] = 3
+            self.policies[1]['n_actions'] = env.screen_size[0]*env.screen_size[1]
+        else:
+            self.policies[0]['n_actions'] = self.n_actions
+        
         self.steps_done = 0 # for exploration
-        self.first_contact_made = False # end episode if agent does not push box after x actions
+        self.contact_made = False # end episode if agent does not push box after x actions
+        self.last_epi_box_in_goal = 0
 
-    def create_or_restore_training_state(self, state_type):
-        if state_type == 'vision':
-            self.policy_net = models.VisionDQN(self.n_observations, self.n_actions)
-            self.target_net = models.VisionDQN(self.n_observations, self.n_actions)
-            
-        else:    
-            self.policy_net = models.SensorDQN(self.n_observations, self.n_actions)
-            self.target_net = models.SensorDQN(self.n_observations, self.n_actions)
-        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.episodic_stats = {'cumulative_reward': [], 'num_steps': [], 'boxes_in_goal': []}
+    
+    def get_state(self, raw_state):
+        if self.state_info == 'colour':
+            state = torch.tensor(raw_state, dtype=torch.int32, device=self.device).unsqueeze(0)
+        elif self.state_info == 'multiinfo':
+            state = []
+            state.append(torch.tensor(raw_state[0], dtype=torch.int32, device=self.device).unsqueeze(0))
+            state.append(torch.zeros_like(state[0], device=self.device, dtype=torch.int32))
+            state[1][0,0,0,0] = raw_state[1][0]
+            state[1][0,0,0,1] = raw_state[1][1]
+            state = torch.stack(state, dim=1)
+        return state
 
-        self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=LR, amsgrad=True)
-        self.memory = ReplayMemory(10000)
+
+    def create_or_restore_training_state(self, state_type, model, buffer_size, hierarchy=0):
+        if self.options and hierarchy == 0:
+            policy_net = models.VisionDQN(self.n_observations, n_actions=3)
+            target_net = models.VisionDQN(self.n_observations, n_actions=3)
+        else:
+            if state_type == 'vision':
+                if model == 'resnet':
+                    if self.action_type == 'straight-line-navigation':
+                        policy_net = models.VisionDQN_SAM(self.n_observations)
+                        target_net = models.VisionDQN_SAM(self.n_observations)
+                    else:
+                        policy_net = models.VisionDQN(self.n_observations, self.n_actions)
+                        target_net = models.VisionDQN(self.n_observations, self.n_actions)
+
+                elif model == 'densenet':
+                    policy_net = models.VisionDQN_dense(self.n_observations, self.n_actions)
+                    target_net = models.VisionDQN_dense(self.n_observations, self.n_actions)
+                
+            else:    
+                policy_net = models.SensorDQN(self.n_observations, self.n_actions)
+                target_net = models.SensorDQN(self.n_observations, self.n_actions)
+        target_net.load_state_dict(policy_net.state_dict())
+
+        # self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.LEARNING_RATE)
+        # self.optimizer = optim.SGD(self.policy_net.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0001)
+        optimizer = optim.AdamW(policy_net.parameters(), lr=self.LEARNING_RATE, weight_decay=0.01)
+        memory = ReplayMemory(buffer_size)
         self.epoch = 0
-        self.loss = 0
+        loss = 0
+        epsilon = self.STARTING_EPSILON
 
         if os.path.exists(self.checkpoint_path):
-            training_state = torch.load(self.checkpoint_path)
-            self.policy_net.load_state_dict(training_state['policy_state_dict'])
-            self.target_net.load_state_dict(training_state['target_state_dict'])
-            self.optimizer.load_state_dict(training_state['optimizer_state_dict'])
-            self.memory.memory = training_state['memory']
-            self.epoch = training_state['epoch']
-            self.loss = training_state['loss']
-            logging.info(f"Training state restored at epoch {self.epoch}")
+            if self.test:
+                policy_net.load_state_dict(torch.load(self.checkpoint_path, map_location=self.device))
+            else:
+                training_state = torch.load(self.checkpoint_path)
+                self.epoch = training_state['epoch']
+                self.episodic_stats = training_state['stats']
+                policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
+                target_net.load_state_dict(training_state[f'target_state_dict_{hierarchy}'])
+                optimizer.load_state_dict(training_state[f'optimizer_state_dict_{hierarchy}'])
+                memory.memory = training_state[f'memory_{hierarchy}']
+                loss = training_state[f'loss_{hierarchy}']
+                epsilon = training_state[f'epsilon_{hierarchy}']
+                logging.info(f"Training state restored at epoch {self.epoch}")
         else:
             logging.info("No checkpoint detected, starting from initial state")
 
+        return {'policy_net': policy_net, 'target_net': target_net, 'optimizer': optimizer, 'memory': memory, 'loss': loss, 'epsilon': epsilon}
+
     def commit_state(self):
         temp_path = os.path.join(os.path.dirname(self.checkpoint_path), "temp.pt")
-        print(self.epoch)
-        training_state = {
-            'policy_state_dict' : self.policy_net.state_dict(),
-            'target_state_dict' : self.target_net.state_dict(),
-            'optimizer_state_dict' : self.optimizer.state_dict(),
-            'memory' : self.memory.memory,
-            'epoch' : self.epoch,
-            'loss' : self.loss, 
-        }
+        training_state = {}
+        training_state['epoch'] = self.epoch
+        training_state['stats'] = self.episodic_stats
+        for i in range(self.num_policies):
+            training_state[f'policy_state_dict_{i}'] = self.policies[i]['policy_net'].state_dict()
+            training_state[f'target_state_dict_{i}'] = self.policies[i]['target_net'].state_dict()
+            training_state[f'optimizer_state_dict_{i}'] = self.policies[i]['optimizer'].state_dict()
+            training_state[f'memory_{i}'] = self.policies[i]['memory'].memory
+            training_state[f'loss_{i}'] = self.policies[i]['loss']
+            training_state[f'epsilon_{i}'] = self.policies[i]['epsilon']
 
         # first save the temp file
         torch.save(training_state, temp_path)
@@ -122,155 +192,352 @@ class Train_DQL():
         msg = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + ": Checkpoint saved at " + self.checkpoint_path
         logging.info(msg)
 
-    def select_action(self):
-        sample = random.random()
-        eps_treshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * self.steps_done / EPS_DECAY)
-        self.steps_done += 1
+        # Update a target network using a source network
+    def update_target(self, policy):
+        for tp, p in zip(policy['target_net'].parameters(), policy['policy_net'].parameters()):
+            tp.data.copy_(p.data)
+        return policy['target_net']
+    
+    def get_action(self, policy):
+        # With probability EPSILON, choose a random action
+        # Rest of the time, choose argmax_a Q(s, a) 
+        if np.random.rand() < policy['epsilon'] and not self.test:
+            if policy['n_actions'] > 16:
+                action = np.random.randint(policy['n_actions']/4) # /4 because the screen is 304x304 but the action space is 152x152
+            else:
+                action = np.random.randint(policy['n_actions'])
 
-        if sample > eps_treshold:
-            with torch.no_grad():
-                # t.max(1) will return the largect column value of each row
-                # second column on max result is index of where max element was
-                # found, so we pick action with the larger expeced reward.
-                return self.policy_net(self.state).max(1).indices.view(1,1)
         else:
-            return torch.tensor([[random.randint(0, self.n_actions-1)]], device=self.device, dtype=torch.long)
+            qvalues = policy['policy_net'](self.transform_state(self.state))
+            action = torch.argmax(qvalues).item()
 
-    episode_durations = []
+        action = torch.tensor([[action]], device=self.device, dtype=torch.long)
+        
+        # Epsilon update rule: Keep reducing a small amount over
+        # STEPS_MAX number of steps, and at the end, fix to EPSILON_END
+        prev_eps = policy['epsilon']
+        policy['epsilon'] = max(self.EPSILON_END, policy['epsilon'] - (1.0 / self.STEPS_MAX))
+        if policy['epsilon'] == self.EPSILON_END and policy['epsilon'] != prev_eps:
+            logging.info("Reached min epsilon")
 
-    def plot_durations(self, show_results=False):
-        pass
+        return action
+    
+    def trans_colour_state(self, state_batch):
+        colour_batch = torch.zeros((state_batch.shape[0], 3, state_batch.shape[2], state_batch.shape[3]),device=self.device,dtype=torch.float32)
+        colour_batch[:,0] = torch.bitwise_and(torch.bitwise_right_shift(state_batch[:,0], 16), 255) # Red channel
+        colour_batch[:, 1] = torch.bitwise_and(torch.bitwise_right_shift(state_batch[:, 0], 8), 255)  # Green channel
+        colour_batch[:, 2] = torch.bitwise_and(state_batch[:, 0], 255)  # Blue channel
+        colour_batch = colour_batch / 255.0
+        return colour_batch
+    
+    def trans_multiinfo_state(self, state_batch):
+        # Returns a tensor of shape (batch_size, 4, height, width)
+        # Channel 0: Grayscale image
+        # Channel 1: Mask of the agent
+        # Channel 2: Distance from the agent to every pixel
+        # Channel 3: Distance from the goal to every pixel
+        # state_batch is a tensor of shape (batch_size, 2)
+        # where the first element is an integer rgb array of the environment and the second element is the position of the agent
+        
+        # Extract the rgb array and the agent position
+        image = state_batch[:, 0, 0]
+        agent_pos = state_batch[:,1,0,0,0:2]/2
+        agent_pos = agent_pos.int()
 
-    def optimize_model(self):
-        transitions = self.memory.sample(BATCH_SIZE)
-        # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
-        # detailed explanation). This converts batch-array of Transitions
-        # to Transition of batch-arrays.
+        # Get the height and width of the image
+        height, width = image.shape[1], image.shape[2]
+
+        # Create a tensor of shape (batch_size, 4, height, width) filled with zeros
+        multiinfo_batch = torch.zeros((state_batch.shape[0], 4, height, width), device=self.device, dtype=torch.float32)
+
+        # Extract the red, green, and blue channels from the rgb array
+        red = torch.bitwise_and(torch.bitwise_right_shift(image, 16), 255)
+        green = torch.bitwise_and(torch.bitwise_right_shift(image, 8), 255)
+        blue = torch.bitwise_and(image, 255)
+
+        # Calculate the grayscale image
+        grayscale = 0.2989 * red + 0.5870 * green + 0.1140 * blue
+
+        # Calculate the mask of the agent (28 pixels (scaled so 14) around the agent)
+        agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
+        y_indices = y_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
+        x_indices = x_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
+        
+        agent_mask = ((x_indices >= (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) - 7)) & 
+                  (x_indices < (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) + 7)) & 
+                  (y_indices >= (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) - 7)) & 
+                  (y_indices < (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) + 7))).float()
+
+        # Calculate the distance from the agent to every pixel
+        y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
+        y_indices, x_indices = y_indices.unsqueeze(0), x_indices.unsqueeze(0)
+        agent_distance = torch.sqrt((x_indices - agent_pos[:, 0].unsqueeze(1).unsqueeze(2))**2 + (y_indices - agent_pos[:, 1].unsqueeze(1).unsqueeze(2))**2)
+
+        # Calculate the distance from the goal to every pixel
+        goal_distance = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        goal_position = torch.tensor(env.goal_position, device=self.device, dtype=torch.float32) / 2
+        goal_x, goal_y = goal_position[0], goal_position[1]
+        goal_distance = torch.sqrt((x_indices - goal_x)**2 + (y_indices - goal_y)**2)
+
+        # As a test, make a heatmap of the goal distance
+        # plt.imshow(agent_mask[0].cpu().numpy())
+        # plt.show()
+        # input()
+
+        # Fill the multiinfo tensor with the grayscale image, the agent mask, the agent distance, and the goal distance
+        multiinfo_batch[:, 0] = grayscale / 255.0
+        multiinfo_batch[:, 1] = agent_mask
+        multiinfo_batch[:, 2] = agent_distance / (304.0/2)
+        multiinfo_batch[:, 3] = goal_distance / (304.0/2)
+
+        return multiinfo_batch
+    
+    def update_networks(self, policy, epi):
+        # Sample a minibatch (s, a, r, s', d)
+        # Each variable is a vector of corresponding values
+        transitions = policy['memory'].sample(self.BATCH_SIZE)
         batch = Transition(*zip(*transitions))
 
-        # Compute a mask of non-final states and concatenate the batch elements
-        # (a final state would've been the one after which simulation ended)
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                                 batch.next_state)), device=self.device, dtype=torch.bool)
-        non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
+        non_final_next_states = self.transform_state(torch.cat([s for s in batch.next_state if s is not None]))
+        state_batch = self.transform_state(torch.cat(batch.state)).to(self.device)
+        action_batch = torch.cat(batch.action).to(self.device)
+        reward_batch = torch.cat(batch.reward).to(self.device)
+        distance_batch = torch.tensor(batch.distance, device=self.device, dtype=torch.float)
 
-        state_batch = torch.cat(batch.state)
-        action_batch = torch.cat(batch.action)
-        reward_batch = torch.cat(batch.reward)
-
-        # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
-        # columns of actions taken. These are the actions which would've been taken
-        # for each batch state according to policy_net
-        state_action_values = self.policy_net(state_batch).gather(1, action_batch)
-
-        # Compute V(s_{t+1}) for all next states.
-        # Expected values of actions for non_final_next_states are computed based
-        # on the "older" target_net; selecting their best reward with max(1).values
-        # This is merged based on the mask, such that we'll have either the expected
-        # state value or 0 in case the state was final.
-        next_state_values = torch.zeros(BATCH_SIZE, device=self.device)
+        # Get Q(s, a) for every (s, a) in the minibatch
+        qvalues = policy['policy_net'](state_batch).gather(1, action_batch.view(-1, 1)).squeeze()
+        
+        # Double DQN Formula: r + gamma*TARGET(s_t+1, argmax_a POLICY (s_t+1, a))
+        q_target_values = torch.zeros(self.BATCH_SIZE, device=self.device)
         with torch.no_grad():
-            next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1).values
-        # Compute the expected Q values
-        expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+            actions = torch.argmax(policy['policy_net'](non_final_next_states), dim=1)
+            q_target_values[non_final_mask] = policy['target_net'](non_final_next_states).gather(1, actions.unsqueeze(1)).squeeze()
+        targets = reward_batch + torch.pow(self.GAMMA, distance_batch) * q_target_values
 
-        # Compute Huber loss
-        criterion = nn.SmoothL1Loss()
-        self.loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
-        # print(self.loss, end='\r')
+        # Detach y since it is the target. Target values should
+        # be kept fixed.
+        loss = torch.nn.SmoothL1Loss()(targets.detach().view_as(qvalues), qvalues)
 
-        # Optimize the model
-        self.optimizer.zero_grad()
-        self.loss.backward()
-        # In-place gradient clipping
-        torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
-        self.optimizer.step()
+        # Backpropagation
+        policy['optimizer'].zero_grad()
+        loss.backward()
+        policy['optimizer'].step()
 
-    def optimizer_to_dev(self):
-        for state in self.optimizer.state.values():
+        # Update target network every few steps
+        if epi % self.TARGET_UPDATE_FREQ == 0: #NOTE epi is updated after every option so more frequently than every sln action (so not really correct)
+            policy['target_policy'] = self.update_target(policy)
+
+        return loss.item()
+    
+    def optimizer_to_dev(self, optimizer):
+        for state in optimizer.state.values():
             for k, v in state.items():
                 if torch.is_tensor(v):
                     state[k] = v.to(self.device)
+        return optimizer
 
     def train(self):
         start_time = time.time()
-        self.policy_net = self.policy_net.to(self.device)
-        self.target_net = self.target_net.to(self.device)
-        self.optimizer_to_dev()
+        for i in range(self.num_policies):
+            self.policies[i]['policy_net'] = self.policies[i]['policy_net'].to(self.device)
+            if not self.test:
+                self.policies[i]['target_net'] = self.policies[i]['target_net'].to(self.device)
+                self.policies[i]['optimizer']  = self.optimizer_to_dev(self.policies[i]['optimizer'])
 
-        # while self.epoch < self.num_epoch:
-        self.num_epoch -= self.epoch
-        for epoch in tqdm(range(self.num_epoch)):
-            # print(self.epoch)
-            # Initialize the environment and get its state
-            self.state = env.reset()
-            self.state = torch.tensor(self.state, dtype=torch.float32, device=self.device).unsqueeze(0)
-            self.first_contact_made = False
+        for epoch in tqdm(range(self.num_epochs)):
+            # Reset environment and get new state
+            self.state = self.get_state(env.reset())
+            self.contact_made = False
             logging.info(f'Epoch {self.epoch}')
-            for t in count():
-            # for t in tqdm(range(100000)):
-                action = self.select_action()
-                observation, reward, done, info = env.step(env.available_actions[action])
-                # print(reward, end='\r')
-                reward = torch.tensor([reward], device=self.device)
-                # print(env._agent['robot'].score, end='\r')
 
-                if env.is_pushing:
-                    self.first_contact_made = True
+            # Keep track of stats
+            self.episodic_stats['cumulative_reward'].append(0)
+            self.episodic_stats['num_steps'].append(0)
+            self.episodic_stats['boxes_in_goal'].append(0)
 
-                if t > 5000 and not self.first_contact_made:
-                    done = True
-                    logging.info("No contact made. Resetting environment...")
+            # actions = []
+            epi = 0
+            done = False
+            # for frame in tqdm(range(100000)):
+            for frame in count():
+                if self.options:
+                    option = self.get_action(self.policies[0])
+                    if option == 0:
+                        reward, epi, done = self.primitive_action_control(None, frame, epi, action=0) # 0 is forward
 
-                if done:
-                    next_state = None
+                    elif option == 1:
+                        reward, epi, done = self.primitive_action_control(None, frame, epi, action=1) # 1 is backward
+
+                    elif option == 2:
+                        reward, epi, done = self.sln_action_control(self.policies[1], frame, epi)
+                    
+                    if not self.test:
+                        self.policies[0]['memory'].push(self.state, option, self.next_state, reward, 1)
+
+                        if len(self.policies[0]['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
+                            self.update_networks(self.policies[0], epi)
+
                 else:
-                    next_state = torch.tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
-                
-                # Store the transition in memory
-                self.memory.push(self.state, action, next_state, reward)
+                    if self.action_type == 'primitive':
+                        reward, epi, done = self.primitive_action_control(self.policies[0], frame, epi)
 
-                # Move to the next state
-                self.state = next_state
+                    elif self.action_type == 'straight-line-navigation':
+                        _, epi, done = self.sln_action_control(self.policies[0], frame, epi)
 
-                # Perform one step of the optimization (on the policy network)
-                if len(self.memory) >= BATCH_SIZE*5:
-                    self.optimize_model()
+                self.state = self.next_state
 
-                # Soft update of the target network's weights
-                target_net_state_dict = self.target_net.state_dict()
-                policy_net_state_dict = self.policy_net.state_dict()
-                for key in policy_net_state_dict:
-                    target_net_state_dict[key] = policy_net_state_dict[key]*TAU + target_net_state_dict[key]*(1-TAU)
-                self.target_net.load_state_dict(target_net_state_dict)
+                # Update stats
+                self.episodic_stats['cumulative_reward'][-1] += reward.item()
+                self.episodic_stats['num_steps'][-1] = epi
+                self.episodic_stats['boxes_in_goal'][-1] = env.config['num_boxes'] - env.boxes_remaining
 
                 cur_time = time.time()
-                if cur_time - start_time > self.checkpoint_interval:
+                if cur_time - start_time > self.checkpoint_interval and not self.test:
                     self.commit_state()
                     start_time = cur_time
+                
+                # if env.is_pushing:
+                #     self.last_epi_box_in_goal = epi
+
+                if epi > self.last_epi_box_in_goal + self.no_goal_timeout:
+                    done = True
+                    logging.info(f"Inactivity timeout. {env.config['num_boxes'] - env.boxes_remaining} in goal. Resetting environment...")
 
                 if done:
-                    self.episode_durations.append(t+1)
-                    self.plot_durations()
-                    if self.first_contact_made:
-                        logging.info("Object in receptacle. Resetting environment...")
+                    if epi <= self.last_epi_box_in_goal + self.no_goal_timeout:
+                        logging.info("All boxes in receptacle. Resetting environment...")
                     break
-            # print()
+
             self.epoch += 1
 
+    def sln_action_control(self, policy, frame, epi):
+        self.action = self.get_action(policy)
+        action = np.unravel_index(self.action[0,0].cpu(), (int(env.screen_size[0]/2), int(env.screen_size[1]/2)))
+        action = (action[0]*2, action[1]*2)
+
+        total_reward = 0
+        while not env.action_completed:
+            next_state, reward, done, info = env.step(action)
+            total_reward += reward
+            if env.boxes_in_goal != 0:
+                logging.info(f"{env.boxes_in_goal} boxes added to receptacle.")
+                self.last_epi_box_in_goal = epi
+        env.action_completed = False
+
+        if done:
+            self.next_state = None
+        else:
+            self.next_state = torch.tensor(next_state, dtype=torch.int32, device=self.device).unsqueeze(0)
+            
+        total_reward = torch.tensor([total_reward], device=self.device)
+        policy['memory'].push(self.state, self.action, self.next_state, total_reward, info['distance'])
+
+        # self.state = self.next_state #############
+    
+        # Train after collecting sufficient experience
+        if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
+            self.update_networks(policy, epi)
+
+        epi += 1
+        return total_reward, epi, done
+
+    def primitive_action_control(self, policy, frame, epi, action=None):
+        if action is not None:
+            total_reward = 0
+            for frame in range(self.action_freq):
+                if frame == 0:
+                    _, reward, done, _ = env.step(env.available_actions[action], primitive=True)
+
+                elif frame == self.action_freq - 1:
+                    env.action_completed = True
+                    next_state, reward, done, _ = env.step(None, primitive=True)
+                    if done:
+                        self.next_state = None
+                    else:
+                        self.next_state = torch.tensor(next_state, dtype=torch.int32, device=self.device).unsqueeze(0)
+                        
+                    # reward = torch.tensor([reward], device=self.device)
+
+                else:
+                    _, reward, done, _ = env.step(None, primitive=True)
+                
+                total_reward += reward
+                if done:
+                    self.next_state = None
+                    break
+            
+            env.action_completed = False
+            epi += 1
+            total_reward = torch.tensor([total_reward], device=self.device)
+            if env.boxes_in_goal != 0:
+                logging.info(f"{env.boxes_in_goal} boxes added to receptacle.")
+                self.last_epi_box_in_goal = epi
+            return total_reward, epi, done
+
+        if frame % self.action_freq == 0:
+            prev_boxes_in_goal = env.boxes_in_goal
+            # Play an episode and log episodic reward
+            self.action = self.get_action(policy)
+            env.step(env.available_actions[self.action], primitive=True)
+            if self.test:
+                print(env.available_actions[self.action])
+
+            epi += 1
+        
+        if frame % self.action_freq == self.action_freq - 1:
+            # Store the transition in memory after reward has been accumulated
+            next_state, reward, done, info = env.step(None, primitive=True)
+            if done:
+                # self.episodic_stats['cumulative_reward'].append(info['cumulative_reward'])
+                self.next_state = None
+            else:
+                self.next_state = self.get_state(next_state)
+            reward = torch.tensor([reward], device=self.device)
+            # print(env.boxes_in_goal)
+            if env.boxes_in_goal > prev_boxes_in_goal:
+                logging.info(f"{env.boxes_in_goal - prev_boxes_in_goal} boxes added to receptacle.")
+                self.last_epi_box_in_goal = epi
+            
+            if not self.test:
+                policy['memory'].push(self.state, self.action, self.next_state, reward, 1)
+
+                # Train after collecting sufficient experience
+                if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
+                    self.update_networks(policy, epi)
+
+        elif frame % self.action_freq != 0:
+            env.step(None, primitive=True)
+        # print(reward)
+        return reward, epi, done
+    
+
 def main(args):
-    global BATCH_SIZE, env
-    if args.log_file is not None:
-        logging.basicConfig(filename=args.log_file,level=logging.DEBUG)
+    test = args.test
+    with open(args.config_file) as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
+    global env
+    if config['log_file'] is not None:
+        if test:
+            logging.basicConfig(filename=config['log_file'][:-4]+'_test.log',level=logging.DEBUG)
+        else:
+            logging.basicConfig(filename=config['log_file'],level=logging.DEBUG)
     
     logging.info("starting training script")
 
-    env = environments.selector(args.environment)
-    env.state_type = args.state_type
-    
-    BATCH_SIZE = args.batch_size
+    env = environments.selector(config)
+    env.state_type = config['state_type']
+    '''
+    if config['action_type'] == 'primitive':
+        env.take_action = env._actions
+    elif config['action_type'] == 'straight-line-navigation':
+        env.take_action = env.straight_line_navigation
+    '''
 
-    train = Train_DQL(args.state_type, args.checkpoint_path, args.checkpoint_interval, args.num_epoch)
+    train = Train_DQL(config, test)
     
     # check if the checkpoint exists and try to resume from the last checkpoint
     # if you are saving for every epoch, you can skip the part about
@@ -288,52 +555,18 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        '--state_type',
+        '--config_file',
         type=str,
-        help='options: ["vision", "sensor"]',
-        required=True
+        help='path of the configuration file',
+        default= 'configurations/config_basic_test.yml'
+        # default= 'configurations/config_basic_primitive.yml'
     )
 
     parser.add_argument(
-        '--num_epoch',
-        type=int,
-        help='number of epochs to run',
-        required=True
-    )
-
-    parser.add_argument(
-        '--checkpoint_path',
-        type=str,
-        help='path to save and look for the checkpoint file',
-        default=os.path.join(os.getcwd(), "checkpoint.pt")
-    )
-
-    parser.add_argument(
-        '--batch_size',
-        type=int,
-        help='batch size per iteration',
-        default=128
-    )
-
-    parser.add_argument(
-        '--checkpoint_interval',
-        type=int,
-        help='period to take checkpoints in seconds',
-        default=3600
-    )
-
-    parser.add_argument(
-        '--log_file',
-        type=str,
-        help='specify the loaction of the output directory, default stdout',
-        default=None
-    )
-
-    parser.add_argument(
-        '--environment',
-        type=int,
-        help='environment to simulate- 0: nav_obstacle, 1: push_empty, 2: push_empty_small',
-        default=0
+        '--test',
+        type=bool,
+        help='testing mode',
+        default= False
     )
 
     main(parser.parse_args())
