@@ -113,6 +113,8 @@ class Train_DQL():
         elif self.state_info == 'multiinfo':
             state = []
             state.append(torch.tensor(raw_state[0], dtype=torch.int32, device=self.device).unsqueeze(0))
+            # NOTE this is a hack to get the agent position into the state tensor
+            # because the state tensor has to be the same shape. Could save a lot of storage by not doing this
             state.append(torch.zeros_like(state[0], device=self.device, dtype=torch.int32))
             state[1][0,0,0,0] = raw_state[1][0]
             state[1][0,0,0,1] = raw_state[1][1]
@@ -281,8 +283,16 @@ class Train_DQL():
         goal_x, goal_y = goal_position[0], goal_position[1]
         goal_distance = torch.sqrt((x_indices - goal_x)**2 + (y_indices - goal_y)**2)
 
-        # As a test, make a heatmap of the goal distance
-        # plt.imshow(agent_mask[0].cpu().numpy())
+        # to visualize the multiinfo tensor
+        # fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+        # axs[0].imshow(grayscale[0].cpu().numpy(), cmap='gray')
+        # axs[0].set_title('Grayscale')
+        # axs[1].imshow(agent_mask[0].cpu().numpy(), cmap='gray')
+        # axs[1].set_title('Agent Mask')
+        # axs[2].imshow(agent_distance[0].cpu().numpy(), cmap='hot')
+        # axs[2].set_title('Agent Distance')
+        # axs[3].imshow(goal_distance[0].cpu().numpy(), cmap='hot')
+        # axs[3].set_title('Goal Distance')
         # plt.show()
         # input()
 

@@ -62,7 +62,7 @@ class Basic_Env(object):
         self._agent = self._create_agent(vertices=((-14,-14), (-14,14), (14,14), (14,-14)), mass=10, position=(random.randint(1,self.grid_size-2), random.randint(2,self.grid_size-2)), damping=0.99)
         self.initial_agent_pos = self._agent['robot'].position
 
-        self.goal_position = (30,60)
+        self.goal_position = self.grid_to_env((0,0))
         # self.initial_box_dists = [distance(box.position, self.goal_position) for box in self._boxes]
         # self.initial_object_dist = distance(self._object.position, self.goal_position)
         
