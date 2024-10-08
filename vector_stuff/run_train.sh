@@ -32,5 +32,4 @@ module purge && module load pytorch2.1-cuda11.8-python3.9
 # demonstrates how to perform checkpointing in pytorch, please navigate to the
 # file for more information.
 source venv/bin/activate
-# python DQL/train.py --state_type vision --num_epoch 50 --checkpoint_path /checkpoint/${USER}/checkpoint.pt --checkpoint_interval 3600 --log_file  $PWD/train.log --batch_size 64 --environment 1
-python DQL/train.py --state_type vision --num_epoch 50 --checkpoint_path $PWD/checkpoint/checkpoint.pt --checkpoint_interval 3600 --log_file  $PWD/train.log --batch_size 64 --environment 2
+python train.py --config_file $PWD/configurations/config_basic_primitive.yml
