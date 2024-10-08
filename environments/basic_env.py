@@ -155,7 +155,7 @@ class Basic_Env(object):
         static_border = []
         edge = self.grid_size - 1
         for coord in [(edge,0), (edge,edge), (0,edge)]:
-            self.grid_world[coord] = 'w'
+            self.grid_world[coord] = 'p'
             c = self.grid_to_env(coord)
             c0, c1, c2, c3 = c[0]+self.gridscale//2, c[1]+self.gridscale//2, c[0]-self.gridscale//2, c[1]-self.gridscale//2
             static_border.append(pymunk.Poly(static_body, ((c0, c1), (c0, c3), (c2, c3), (c2, c1))))
@@ -259,6 +259,7 @@ class Basic_Env(object):
             self.reward_from_last_action += self.get_reward(True if action is not None else False)
             if action is not None:
                 print(self.reward_from_last_action)
+                pass
 
             # self.reward = self.get_reward(True if action is not None else False)
 
@@ -374,11 +375,11 @@ class Basic_Env(object):
         """
         self._space.debug_draw(self._draw_options)
 
-    def move_box(self, grid_coords, action) -> tuple:
+    def move_box(self, grid_coords, action, p=None) -> tuple:
         """
         Move the object in the grid
         """
-        prob = self.box_uncertainty
+        prob = self.box_uncertainty if p is None else p
         random_action = np.random.choice([-1, 0, 1], p=[prob/2, 1-prob, prob/2])
         rand_1, rand_2 = 1, 1
         if random_action == -1:
@@ -410,14 +411,14 @@ class Basic_Env(object):
         for box in self._boxes.values():
             if grid_coords == self.env_to_grid(box['body'].position):
                 return box['body'].label[-1]
-        return -1       
+        return -1
     
     def check_collision(self, grid_coords, action, obj_type, box_idx=None) -> bool:
         """
         Check if the object will collide with the walls or other objects
         """
         collision_detected = False
-        if grid_coords[0] < 0 or grid_coords[0] >= self.grid_size or grid_coords[1] < 0 or grid_coords[1] >= self.grid_size or self.grid_world[grid_coords] == 'w':
+        if grid_coords[0] < 0 or grid_coords[0] >= self.grid_size or grid_coords[1] < 0 or grid_coords[1] >= self.grid_size:
             collision_detected = True
             self.collision_occuring = True if obj_type == 'r' else False
             return collision_detected
@@ -430,14 +431,63 @@ class Basic_Env(object):
             new_box_coords = self.move_box(grid_coords, action)
             box_idx = self.get_box_index(grid_coords)
             num_boxes = len(self._boxes)
+            if self.grid_world[self.env_to_grid(self._boxes[box_idx]['body'].position)][0] == 'c':
+                if action in ['NW', 'NE', 'SW', 'SE']:
+                    if action == 'NW':
+                        if grid_coords[0] <= 1:
+                            action = 'W'
+                        else:
+                            action = 'N'
+                    elif action == 'NE':
+                        if grid_coords[0] <= 1:
+                            action = 'E'
+                        else:
+                            action = 'N'
+                    elif action == 'SW':
+                        if grid_coords[0] <= 1:
+                            action = 'S'
+                        else:
+                            action = 'W'
+                    elif action == 'SE':
+                        if grid_coords[0] <= 1:
+                            action = 'S'
+                        else:
+                            action = 'E'
+                    new_box_coords = self.move_box(grid_coords, action)
+
             if self.check_collision(new_box_coords, action, 'b', box_idx):
                 collision_detected = True
-            elif self.grid_world[new_box_coords] != 'g':
+            elif self.grid_world[new_box_coords] == 'g':
+                self.grid_world[grid_coords] = self.grid_world[grid_coords][:-1]
+            elif self.grid_world[new_box_coords] == 'p':
+                if action == 'N':
+                    action = 'NW'
+                elif action == 'E':
+                    if new_box_coords[0] == 0:
+                        action = 'SE'
+                    else:
+                        action = 'NE'
+                elif action == 'S':
+                    if new_box_coords[1] == 0:
+                        action = 'SE'
+                    else:
+                        action = 'SW'
+                elif action == 'W':
+                    action = 'NW'
+                else:
+                    collision_detected = True
+                    return collision_detected
+                new_box_coords = self.move_box(grid_coords, action, p=0)
+                if self.check_collision(new_box_coords, action, 'b', box_idx):
+                    collision_detected = True
                 self._boxes[box_idx]['body'].position = self.grid_to_env(new_box_coords)
                 self.grid_world[grid_coords] = self.grid_world[grid_coords][:-1]
                 self.grid_world[new_box_coords] += "b"
-            elif self.grid_world[new_box_coords] == 'g':
+            
+            else:
+                self._boxes[box_idx]['body'].position = self.grid_to_env(new_box_coords)
                 self.grid_world[grid_coords] = self.grid_world[grid_coords][:-1]
+                self.grid_world[new_box_coords] += "b"
         
         elif grid_label == 'g':
             if obj_type == 'r':
@@ -451,6 +501,12 @@ class Basic_Env(object):
             if obj_type == 'b':
                 # box_idx = self.get_box_index(grid_coords)
                 self._boxes[box_idx]['body'].in_corner = True
+        
+        elif grid_label == 'p':
+            if obj_type == 'r':
+                collision_detected = True
+                self.collision_occuring = True if obj_type == 'r' else False
+                return collision_detected
         
         if len(self._boxes) == 0:
             self._done = True
