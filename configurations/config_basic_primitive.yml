@@ -2,13 +2,13 @@ action_freq: 1
 action_type: primitive
 batch_size: 128
 checkpoint_interval: 3000
-checkpoint_path: checkpoint/checkpoint-basic-states-boxes.pt
+checkpoint_path: checkpoint/checkpoint-corner.pt
 environment: 3
 epsilon_end: 0.01
 epsilon_start: 1.0
 epsilon_steps: 10000
 gamma: 0.99
-log_file: output_logs/train-basic-states-boxes.log
+log_file: output_logs/train-corner.log
 lr: 0.0005
 ministep_size: 0.25
 model: resnet
