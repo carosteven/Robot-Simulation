@@ -3,6 +3,7 @@ action_type: primitive
 batch_size: 128
 checkpoint_interval: 3000
 checkpoint_path: checkpoint/checkpoint-basic-states-boxes.pt
+model_path: model_weights/model-basic-states-boxes.pt
 environment: 3
 epsilon_end: 0.01
 epsilon_start: 1.0

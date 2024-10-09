@@ -53,7 +53,7 @@ class Train_DQL():
         self.action_type = config['action_type']
         self.options = config['options']
         self.num_policies = config['num_policies']
-        self.checkpoint_path = config['checkpoint_path']
+        self.checkpoint_path = config['checkpoint_path'] if not test else config['model_path']
         self.checkpoint_interval = config['checkpoint_interval']
         self.no_goal_timeout = config['no_goal_timeout']
         self.num_epochs = config['num_epochs']
@@ -154,12 +154,15 @@ class Train_DQL():
         epsilon = self.STARTING_EPSILON
 
         if os.path.exists(self.checkpoint_path):
+            training_state = torch.load(self.checkpoint_path, map_location=self.device)
+            self.episodic_stats = training_state['stats']
+
             if self.test:
-                policy_net.load_state_dict(torch.load(self.checkpoint_path, map_location=self.device))
+                policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
+                self.show_stats(self.episodic_stats)
             else:
                 training_state = torch.load(self.checkpoint_path)
                 self.epoch = training_state['epoch']
-                self.episodic_stats = training_state['stats']
                 policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
                 target_net.load_state_dict(training_state[f'target_state_dict_{hierarchy}'])
                 optimizer.load_state_dict(training_state[f'optimizer_state_dict_{hierarchy}'])
@@ -524,6 +527,31 @@ class Train_DQL():
         # print(reward)
         return reward, epi, done
     
+    def show_stats(self, stats):
+        fig, ax1 = plt.subplots()
+
+        ax2 = ax1.twinx()
+        ax3 = ax1.twinx()
+
+        ax3.spines['right'].set_position(('outward', 60))
+
+        ax1.plot(stats['cumulative_reward'], 'g-', label='Cumulative Reward')
+        ax2.plot(stats['num_steps'], 'b-', label='Number of Steps')
+        ax3.bar(range(len(stats['boxes_in_goal'])), stats['boxes_in_goal'], alpha=0.3, color='r', label='Boxes in Goal')
+
+        ax1.set_xlabel('Episode')
+        ax1.set_ylabel('Cumulative Reward', color='g')
+        ax2.set_ylabel('Number of Steps', color='b')
+        ax3.set_ylabel('Boxes in Goal', color='r')
+
+        ax1.tick_params(axis='y', labelcolor='g')
+        ax2.tick_params(axis='y', labelcolor='b')
+        ax3.tick_params(axis='y', labelcolor='r')
+
+        fig.tight_layout()
+        fig.legend(loc='upper left', bbox_to_anchor=(0, 1), bbox_transform=ax1.transAxes)
+        plt.show()
+    
 
 def main(args):
     test = args.test
@@ -568,8 +596,8 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        default= 'configurations/config_basic_test.yml'
-        # default= 'configurations/config_basic_primitive.yml'
+        # default= 'configurations/config_basic_test.yml'
+        default= 'configurations/config_basic_primitive.yml'
     )
 
     parser.add_argument(
