@@ -264,6 +264,7 @@ class Train_DQL():
         grayscale = 0.2989 * red + 0.5870 * green + 0.1140 * blue
 
         # Calculate the mask of the agent (28 pixels (scaled so 14) around the agent)
+        '''
         agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
         agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
         y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
@@ -274,6 +275,37 @@ class Train_DQL():
                   (x_indices < (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) + 7)) & 
                   (y_indices >= (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) - 7)) & 
                   (y_indices < (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) + 7))).float()
+        '''
+        agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
+        y_indices = y_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
+        x_indices = x_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
+
+        # Mask for the agent
+        agent_mask = ((x_indices >= (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) - 7)) & 
+                  (x_indices < (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) + 7)) & 
+                  (y_indices >= (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) - 7)) & 
+                  (y_indices < (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) + 7))).float()
+        agent_mask[agent_mask == 1] = 1
+
+        # Mask for the boxes
+        for box in env._boxes.values():
+            box_pos = torch.tensor(box['body'].position, device=self.device, dtype=torch.float32) / 2
+            box_x, box_y = box_pos[0], box_pos[1]
+            box_mask = ((x_indices >= (box_x - 7)) & 
+                (x_indices < (box_x + 7)) & 
+                (y_indices >= (box_y - 7)) & 
+                (y_indices < (box_y + 7))).float()
+            agent_mask[box_mask == 1] = 2
+
+        # Mask for the goal
+        goal_pos = torch.tensor(env.goal_position, device=self.device, dtype=torch.float32) / 2
+        goal_x, goal_y = goal_pos[0], goal_pos[1]
+        goal_mask = ((x_indices >= (0)) & 
+                 (x_indices < (0 + env.gridscale)) & 
+                 (y_indices >= (0)) & 
+                 (y_indices < (0  + env.gridscale))).float()
+        agent_mask[goal_mask == 1] = 3
 
         # Calculate the distance from the agent to every pixel
         y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
@@ -287,17 +319,17 @@ class Train_DQL():
         goal_distance = torch.sqrt((x_indices - goal_x)**2 + (y_indices - goal_y)**2)
 
         # to visualize the multiinfo tensor
-        # fig, axs = plt.subplots(1, 4, figsize=(20, 5))
-        # axs[0].imshow(grayscale[0].cpu().numpy(), cmap='gray')
-        # axs[0].set_title('Grayscale')
-        # axs[1].imshow(agent_mask[0].cpu().numpy(), cmap='gray')
-        # axs[1].set_title('Agent Mask')
-        # axs[2].imshow(agent_distance[0].cpu().numpy(), cmap='hot')
-        # axs[2].set_title('Agent Distance')
-        # axs[3].imshow(goal_distance[0].cpu().numpy(), cmap='hot')
-        # axs[3].set_title('Goal Distance')
-        # plt.show()
-        # input()
+        fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+        axs[0].imshow(grayscale[0].cpu().numpy(), cmap='gray')
+        axs[0].set_title('Grayscale')
+        axs[1].imshow(agent_mask[0].cpu().numpy(), cmap='gray')
+        axs[1].set_title('Agent Mask')
+        axs[2].imshow(agent_distance[0].cpu().numpy(), cmap='hot')
+        axs[2].set_title('Agent Distance')
+        axs[3].imshow(goal_distance[0].cpu().numpy(), cmap='hot')
+        axs[3].set_title('Goal Distance')
+        plt.show()
+        input()
 
         # Fill the multiinfo tensor with the grayscale image, the agent mask, the agent distance, and the goal distance
         multiinfo_batch[:, 0] = grayscale / 255.0
