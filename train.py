@@ -374,6 +374,7 @@ class Train_DQL():
 
             # actions = []
             epi = 0
+            self.last_epi_box_in_goal = 0
             done = False
             # for frame in tqdm(range(100000)):
             for frame in count():
