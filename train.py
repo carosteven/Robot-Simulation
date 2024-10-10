@@ -263,19 +263,7 @@ class Train_DQL():
         # Calculate the grayscale image
         grayscale = 0.2989 * red + 0.5870 * green + 0.1140 * blue
 
-        # Calculate the mask of the agent (28 pixels (scaled so 14) around the agent)
-        '''
-        agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
-        agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
-        y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
-        y_indices = y_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
-        x_indices = x_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
-        
-        agent_mask = ((x_indices >= (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) - 7)) & 
-                  (x_indices < (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) + 7)) & 
-                  (y_indices >= (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) - 7)) & 
-                  (y_indices < (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) + 7))).float()
-        '''
+        # Calculate the mask of the agent (28 pixels (scaled so 14) around the agent
         agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
         y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
         y_indices = y_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
@@ -406,6 +394,7 @@ class Train_DQL():
 
             # actions = []
             epi = 0
+            self.last_epi_box_in_goal = 0
             done = False
             # for frame in tqdm(range(100000)):
             for frame in count():
