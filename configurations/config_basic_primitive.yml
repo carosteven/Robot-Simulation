@@ -1,19 +1,19 @@
 action_freq: 1
 action_type: primitive
 batch_size: 128
-checkpoint_interval: 3000
-checkpoint_path: checkpoint/checkpoint-push_reward.pt
-model_path: model_weights/model-push_reward.pt
+checkpoint_interval: 1500
+checkpoint_path: checkpoint/checkpoint-newTO.pt
+model_path: model_weights/model-newTO.pt
 environment: 3
 epsilon_end: 0.01
 epsilon_start: 1.0
 epsilon_steps: 10000
 gamma: 0.99
-log_file: output_logs/train-push_reward.log
+log_file: output_logs/train-newTO.log
 lr: 0.0005
 ministep_size: 0.25
 model: resnet
-no_goal_timeout: 1000
+no_goal_timeout: 500
 num_boxes: 5
 num_epochs: 500
 num_of_batches_before_train: 10
@@ -29,7 +29,7 @@ state_info: multiinfo
 collision_penalty:      5
 action_penalty:         0
 no_movement_penalty:    0
-push_reward:            0 #5
+push_reward:            5
 obj_to_goal_reward:     100
 exploration_reward:     0
 partial_rewards_scale:  1
