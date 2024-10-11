@@ -160,6 +160,7 @@ class Train_DQL():
             if self.test:
                 policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
                 self.show_stats(self.episodic_stats)
+                epsilon = self.EPSILON_END
             else:
                 training_state = torch.load(self.checkpoint_path)
                 self.epoch = training_state['epoch']
@@ -206,7 +207,7 @@ class Train_DQL():
     def get_action(self, policy):
         # With probability EPSILON, choose a random action
         # Rest of the time, choose argmax_a Q(s, a) 
-        if np.random.rand() < policy['epsilon'] and not self.test:
+        if np.random.rand() < policy['epsilon']:
             if policy['n_actions'] > 16:
                 action = np.random.randint(policy['n_actions']/4) # /4 because the screen is 304x304 but the action space is 152x152
             else:
@@ -550,6 +551,8 @@ class Train_DQL():
 
         fig.tight_layout()
         fig.legend(loc='upper left', bbox_to_anchor=(0, 1), bbox_transform=ax1.transAxes)
+        num_boxes_equals_5 = sum(1 for boxes in stats['boxes_in_goal'] if boxes == 5)
+        print(f"Number of times boxes in goal equals 5: {num_boxes_equals_5}, out of {len(stats['boxes_in_goal'])} episodes")
         plt.show()
     
 
