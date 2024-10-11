@@ -2,14 +2,14 @@ action_freq: 1
 action_type: primitive
 batch_size: 128
 checkpoint_interval: 1500
-checkpoint_path: checkpoint/checkpoint-newTO.pt
-model_path: model_weights/model-newTO.pt
+checkpoint_path: checkpoint/checkpoint-newTO-goalr.pt
+model_path: model_weights/model-newTO-goalr.pt
 environment: 3
 epsilon_end: 0.01
 epsilon_start: 1.0
 epsilon_steps: 10000
 gamma: 0.99
-log_file: output_logs/train-newTO.log
+log_file: output_logs/train-newTO-goalr.log
 lr: 0.0005
 ministep_size: 0.25
 model: resnet
@@ -30,7 +30,7 @@ collision_penalty:      5
 action_penalty:         0
 no_movement_penalty:    0
 push_reward:            5
-obj_to_goal_reward:     100
+obj_to_goal_reward:     1000
 exploration_reward:     0
 partial_rewards_scale:  1
 corner_penalty:         0 #10
