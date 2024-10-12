@@ -535,11 +535,6 @@ class Train_DQL():
         return reward, epi, done
     
     def show_stats(self, stats):
-        # Remove the last element from the stats since it is not complete
-        for key in stats.keys():
-            if len(stats[key]) > 0:
-                stats[key].pop()
-
         fig, ax1 = plt.subplots()
 
         ax2 = ax1.twinx()
