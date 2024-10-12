@@ -90,6 +90,8 @@ class Train_DQL():
         self.next_state = None
         self.action = None
         
+        self.episodic_stats = {'cumulative_reward': [], 'num_steps': [], 'boxes_in_goal': []}
+        
         self.policies = []
         for i in range(self.num_policies):
             policy = self.create_or_restore_training_state(config['state_type'], config['model'], config['replay_buffer_size'], hierarchy=i)
@@ -105,7 +107,6 @@ class Train_DQL():
         self.contact_made = False # end episode if agent does not push box after x actions
         self.last_epi_box_in_goal = 0
 
-        self.episodic_stats = {'cumulative_reward': [], 'num_steps': [], 'boxes_in_goal': []}
     
     def get_state(self, raw_state):
         if self.state_info == 'colour':
@@ -155,11 +156,16 @@ class Train_DQL():
 
         if os.path.exists(self.checkpoint_path):
             training_state = torch.load(self.checkpoint_path, map_location=self.device)
+            # Remove the last element from the stats since it is not complete
+            for key in training_state['stats'].keys():
+                if len(training_state['stats'][key]) > 0:
+                    training_state['stats'][key].pop()
             self.episodic_stats = training_state['stats']
 
             if self.test:
                 policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
                 self.show_stats(self.episodic_stats)
+                epsilon = self.EPSILON_END
             else:
                 training_state = torch.load(self.checkpoint_path)
                 self.epoch = training_state['epoch']
@@ -206,7 +212,7 @@ class Train_DQL():
     def get_action(self, policy):
         # With probability EPSILON, choose a random action
         # Rest of the time, choose argmax_a Q(s, a) 
-        if np.random.rand() < policy['epsilon'] and not self.test:
+        if np.random.rand() < policy['epsilon']:
             if policy['n_actions'] > 16:
                 action = np.random.randint(policy['n_actions']/4) # /4 because the screen is 304x304 but the action space is 152x152
             else:
@@ -529,6 +535,11 @@ class Train_DQL():
         return reward, epi, done
     
     def show_stats(self, stats):
+        # Remove the last element from the stats since it is not complete
+        for key in stats.keys():
+            if len(stats[key]) > 0:
+                stats[key].pop()
+
         fig, ax1 = plt.subplots()
 
         ax2 = ax1.twinx()
@@ -549,8 +560,12 @@ class Train_DQL():
         ax2.tick_params(axis='y', labelcolor='b')
         ax3.tick_params(axis='y', labelcolor='r')
 
+        ax3.set_ylim(0, 5)  # Set the y-axis limits for boxes in goal
+
         fig.tight_layout()
         fig.legend(loc='upper left', bbox_to_anchor=(0, 1), bbox_transform=ax1.transAxes)
+        num_boxes_equals_5 = sum(1 for boxes in stats['boxes_in_goal'] if boxes == 5)
+        print(f"Number of times boxes in goal equals 5: {num_boxes_equals_5}, out of {len(stats['boxes_in_goal'])} episodes")
         plt.show()
     
 
