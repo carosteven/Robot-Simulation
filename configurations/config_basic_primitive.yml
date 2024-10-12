@@ -2,14 +2,14 @@ action_freq: 1
 action_type: primitive
 batch_size: 128
 checkpoint_interval: 1500
-checkpoint_path: checkpoint/checkpoint-newTO-goalr.pt
-model_path: model_weights/model-newTO-goalr.pt
+checkpoint_path: checkpoint/checkpoint-TO250-gr.pt
+model_path: model_weights/model-TO250-gr.pt
 environment: 3
 epsilon_end: 0.01
 epsilon_start: 1.0
 epsilon_steps: 10000
 gamma: 0.99
-log_file: output_logs/train-newTO-goalr.log
+log_file: output_logs/train-TO250-gr.log
 lr: 0.0005
 ministep_size: 0.25
 model: resnet
