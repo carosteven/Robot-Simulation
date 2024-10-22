@@ -220,7 +220,10 @@ class Train_DQL():
 
         else:
             qvalues = policy['policy_net'](self.transform_state(self.state))
-            action = torch.argmax(qvalues).item()
+            # Boltzmann exploration
+            temperature = 1.0 # Lower temperature -> more deterministic
+            action_probabilities = F.softmax(qvalues / temperature, dim=0)
+            action = torch.multinomial(action_probabilities, 1).item()
 
         action = torch.tensor([[action]], device=self.device, dtype=torch.long)
         
