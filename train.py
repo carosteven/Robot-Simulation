@@ -220,7 +220,10 @@ class Train_DQL():
 
         else:
             qvalues = policy['policy_net'](self.transform_state(self.state))
-            action = torch.argmax(qvalues).item()
+            # Boltzmann exploration
+            temperature = 1.0 # Lower temperature -> more deterministic
+            action_probabilities = F.softmax(qvalues / temperature, dim=1)
+            action = torch.multinomial(action_probabilities, 1).item()
 
         action = torch.tensor([[action]], device=self.device, dtype=torch.long)
         
@@ -607,8 +610,8 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        # default= 'configurations/config_basic_test.yml'
-        default= 'configurations/config_basic_primitive.yml'
+        default= 'configurations/config_basic_test.yml'
+        # default= 'configurations/config_basic_primitive.yml'
     )
 
     parser.add_argument(
