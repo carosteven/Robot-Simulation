@@ -567,8 +567,12 @@ class Basic_Env(object):
     
     def reset(self):
         cumulative_reward = self.reward
+        grid_size = self.grid_size
+        num_boxes = self.config['num_boxes']
         self.__init__(self.config)
         self.reward = cumulative_reward
+        self.grid_size = grid_size
+        self.boxes_remaining = num_boxes
         return self.state
         
     def close(self):
