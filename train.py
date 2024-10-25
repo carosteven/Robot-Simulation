@@ -215,6 +215,8 @@ class Train_DQL():
         #       Rest of the time, choose Prob(Softmax( Q(s, a) / Sum(Q(s, a)) ))
         # 2:    With probability EPSILON, choose Prob(Softmax( Q(s, a) / Sum(Q(s, a)) ))
         #       Rest of the time, argmax_a Q(s, a)
+
+        ''' # IDEA 1
         if np.random.rand() < policy['epsilon']:
             if policy['n_actions'] > 16:
                 action = np.random.randint(policy['n_actions']/4) # /4 because the screen is 304x304 but the action space is 152x152
@@ -226,7 +228,22 @@ class Train_DQL():
             # Boltzmann distribution
             temperature = 1.0 # Lower temperature -> more deterministic
             action_probabilities = F.softmax(qvalues / temperature, dim=1)
-            action = torch.multinomial(action_probabilities, 1).item()
+            action = torch.multinomial(action_probabilities, 1).item()'''
+        
+        # IDEA 2
+        if np.random.rand() < policy['epsilon']:
+            if policy['n_actions'] > 16:
+                action = np.random.randint(policy['n_actions']/4) # /4 because the screen is 304x304 but the action space is 152x152
+            else:
+                qvalues = policy['policy_net'](self.transform_state(self.state))
+                # Boltzmann distribution
+                temperature = 1.0 # Lower temperature -> more deterministic
+                action_probabilities = F.softmax(qvalues / temperature, dim=1)
+                action = torch.multinomial(action_probabilities, 1).item()
+
+        else:
+            qvalues = policy['policy_net'](self.transform_state(self.state))
+            action = torch.argmax(qvalues).item()
 
         action = torch.tensor([[action]], device=self.device, dtype=torch.long)
         
@@ -613,8 +630,8 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        default= 'configurations/config_basic_test.yml'
-        # default= 'configurations/config_basic_primitive.yml'
+        # default= 'configurations/config_basic_test.yml'
+        default= 'configurations/config_basic_primitive.yml'
     )
 
     parser.add_argument(
