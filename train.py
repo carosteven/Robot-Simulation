@@ -210,8 +210,11 @@ class Train_DQL():
         return policy['target_net']
     
     def get_action(self, policy):
-        # With probability EPSILON, choose a random action
-        # Rest of the time, choose argmax_a Q(s, a) 
+        # Two ideas:
+        # 1:    With probability EPSILON, choose a random action
+        #       Rest of the time, choose Prob(Softmax( Q(s, a) / Sum(Q(s, a)) ))
+        # 2:    With probability EPSILON, choose Prob(Softmax( Q(s, a) / Sum(Q(s, a)) ))
+        #       Rest of the time, argmax_a Q(s, a)
         if np.random.rand() < policy['epsilon']:
             if policy['n_actions'] > 16:
                 action = np.random.randint(policy['n_actions']/4) # /4 because the screen is 304x304 but the action space is 152x152
@@ -220,7 +223,7 @@ class Train_DQL():
 
         else:
             qvalues = policy['policy_net'](self.transform_state(self.state))
-            # Boltzmann exploration
+            # Boltzmann distribution
             temperature = 1.0 # Lower temperature -> more deterministic
             action_probabilities = F.softmax(qvalues / temperature, dim=1)
             action = torch.multinomial(action_probabilities, 1).item()
