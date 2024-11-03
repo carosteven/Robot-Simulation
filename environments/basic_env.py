@@ -387,21 +387,29 @@ class Basic_Env(object):
             rand_2 = 0
 
         if action == 'N':
-            return (grid_coords[0]-1, grid_coords[1]+random_action)
+            action = 'N' if random_action == 0 else 'NE' if random_action == 1 else 'NW'
+            return (grid_coords[0]-1, grid_coords[1]+random_action), action
         elif action == 'E':
-            return (grid_coords[0]+random_action, grid_coords[1]+1)
+            action = 'E' if random_action == 0 else 'SE' if random_action == 1 else 'NE'
+            return (grid_coords[0]+random_action, grid_coords[1]+1), action
         elif action == 'S':
-            return (grid_coords[0]+1, grid_coords[1]+random_action)
+            action = 'S' if random_action == 0 else 'SE' if random_action == 1 else 'SW'
+            return (grid_coords[0]+1, grid_coords[1]+random_action), action
         elif action == 'W':
-            return (grid_coords[0]+random_action, grid_coords[1]-1)
+            action = 'W' if random_action == 0 else 'SW' if random_action == 1 else 'NW'
+            return (grid_coords[0]+random_action, grid_coords[1]-1), action
         elif action == 'NE':
-            return (grid_coords[0]- (1 * rand_1), grid_coords[1]+ (1 * rand_2))
+            action = 'NE' if random_action == 0 else 'N' if random_action == 1 else 'E'
+            return (grid_coords[0] - rand_1, grid_coords[1] + rand_2), action
         elif action == 'SE':
-            return (grid_coords[0]+ (1 * rand_1), grid_coords[1]+ (1 * rand_2))
+            action = 'SE' if random_action == 0 else 'S' if random_action == 1 else 'E'
+            return (grid_coords[0] + rand_1, grid_coords[1] + rand_2), action
         elif action == 'SW':
-            return (grid_coords[0]+ (1 * rand_1), grid_coords[1]- (1 * rand_2))
+            action = 'SW' if random_action == 0 else 'S' if random_action == 1 else 'W'
+            return (grid_coords[0] + rand_1, grid_coords[1] - rand_2), action
         elif action == 'NW':
-            return (grid_coords[0]- (1 * rand_1), grid_coords[1]- (1 * rand_2)) 
+            action = 'NW' if random_action == 0 else 'N' if random_action == 1 else 'W'
+            return (grid_coords[0] - rand_1, grid_coords[1] - rand_2), action
 
     def get_box_index(self, grid_coords) -> int:
         """
@@ -424,12 +432,30 @@ class Basic_Env(object):
         
         grid_label = self.grid_world[grid_coords]
         grid_label = grid_label[-1] if grid_label != '' else grid_label
+        second_label = self.grid_world[grid_coords][:-1] if grid_label != '' else None
         if grid_label == 'b':
             if obj_type == 'r':
                 self.is_pushing = True
-            new_box_coords = self.move_box(grid_coords, action)
+            new_box_coords, action = self.move_box(grid_coords, action)
             box_idx = self.get_box_index(grid_coords)
             num_boxes = len(self._boxes)
+            if second_label == 'c'and obj_type == 'b':
+                if action == 'NW':
+                    if new_box_coords[0] == -1:
+                        action = 'W'
+                    else:
+                        action = 'N'
+                elif action == 'SE':
+                    if new_box_coords[0] == 2:
+                        action = 'S'
+                    else:
+                        action = 'E'
+                elif action == 'NE':
+                    action = 'N'
+                elif action == 'SW':
+                    action = 'W'
+                new_box_coords, action = self.move_box(grid_coords, action)
+                # self.check_collision(new_box_coords, action, 'b', box_idx)
             if self.check_collision(new_box_coords, action, 'b', box_idx):
                 collision_detected = True
             elif self.grid_world[new_box_coords] != 'g':
@@ -451,6 +477,7 @@ class Basic_Env(object):
             if obj_type == 'b':
                 # box_idx = self.get_box_index(grid_coords)
                 self._boxes[box_idx]['body'].in_corner = True
+
         
         if len(self._boxes) == 0:
             self._done = True
