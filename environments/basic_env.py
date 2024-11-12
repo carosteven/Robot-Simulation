@@ -50,6 +50,10 @@ class Basic_Env(object):
         self._draw_options = pymunk.pygame_util.DrawOptions(self._screen)
         self.pxarr = pygame.PixelArray(self._draw_options.surface)
 
+        # For curriculum learning
+        self.num_boxes = config['num_boxes'] if config is not None else 5
+        self.training_step = 0
+
         # Environment
         self.grid_size = config['grid_size'] if config is not None else 10
         self.gridscale = self.screen_size[0] // self.grid_size
@@ -486,7 +490,7 @@ class Basic_Env(object):
                 self._boxes[box_idx]['body'].in_corner = True
 
         
-        if len(self._boxes) == 0:
+        if len(self._boxes) == self.num_boxes - (self.training_step+1):
             self._done = True
 
         return collision_detected
@@ -601,8 +605,12 @@ class Basic_Env(object):
     
     def reset(self):
         cumulative_reward = self.reward
+        # num_boxes = self.config['num_boxes']
+        training_step = self.training_step
         self.__init__(self.config)
         self.reward = cumulative_reward
+        # self.boxes_remaining = num_boxes
+        self.training_step = training_step
         return self.state
         
     def close(self):

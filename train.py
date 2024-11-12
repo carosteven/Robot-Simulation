@@ -358,6 +358,32 @@ class Train_DQL():
                 if torch.is_tensor(v):
                     state[k] = v.to(self.device)
         return optimizer
+    
+    def scheduler(self):
+        success_threshold = 0.8  # Define a success threshold
+        evaluation_interval = 10  # Define window to evaluate success rate
+        success_count = sum(1 for boxes in self.episodic_stats['boxes_in_goal'][-evaluation_interval:] if boxes == env.training_step+1)
+        success_rate = success_count / evaluation_interval
+
+        if success_rate >= success_threshold:
+            self.increase_difficulty()
+
+
+    def increase_difficulty(self):
+        # I think in "Curriculum RL From Avoiding Collision..." they do not clear the replay buffer
+        # env.config['num_boxes'] -= 5
+        # logging.info(f"\nIncreasing difficulty: grid_size={env.config['grid_size']}, num_boxes={env.config['num_boxes']}\n")
+        if env.training_step <= 3:
+            logging.info(f"\nIncreasing difficulty\n")
+            if env.training_step == 3:
+                logging.info(f"\nReached maximum difficulty\n")
+            env.training_step += 1
+            env.config['num_boxes'] -= 5
+            # for policy in self.policies:
+            #     policy['epsilon'] = self.STARTING_EPSILON
+        
+        # else:
+        #     self.box_positions = [(x, y) for x in range(env.grid_size-1) for y in range(env.grid_size-2, -1, -1) if (x, y) not in [(0, 0), (0, 1), (1, 0), (1, 1)]]
 
     def train(self):
         start_time = time.time()
@@ -369,6 +395,7 @@ class Train_DQL():
 
         for epoch in tqdm(range(self.num_epochs)):
             # Reset environment and get new state
+            self.scheduler()
             self.state = self.get_state(env.reset())
             self.contact_made = False
             logging.info(f'Epoch {self.epoch}')
@@ -609,8 +636,8 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        # default= 'configurations/config_basic_test.yml'
-        default= 'configurations/config_basic_primitive.yml'
+        default= 'configurations/config_basic_test.yml'
+        # default= 'configurations/config_basic_primitive.yml'
     )
 
     parser.add_argument(
