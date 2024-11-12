@@ -605,11 +605,9 @@ class Basic_Env(object):
     
     def reset(self):
         cumulative_reward = self.reward
-        # num_boxes = self.config['num_boxes']
         training_step = self.training_step
         self.__init__(self.config)
         self.reward = cumulative_reward
-        # self.boxes_remaining = num_boxes
         self.training_step = training_step
         return self.state
         
