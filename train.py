@@ -54,6 +54,7 @@ class Train_DQL():
         self.options = config['options']
         self.num_policies = config['num_policies']
         self.checkpoint_path = config['checkpoint_path'] if not test else config['model_path']
+        print(self.checkpoint_path.split('/')[-1])
         self.checkpoint_interval = config['checkpoint_interval']
         self.no_goal_timeout = config['no_goal_timeout']
         self.num_epochs = config['num_epochs']
@@ -379,8 +380,8 @@ class Train_DQL():
                 logging.info(f"\nReached maximum difficulty\n")
             env.training_step += 1
             env.config['num_boxes'] -= 5
-            # for policy in self.policies:
-            #     policy['epsilon'] = self.STARTING_EPSILON
+            for policy in self.policies:
+                policy['epsilon'] = self.STARTING_EPSILON
         
         # else:
         #     self.box_positions = [(x, y) for x in range(env.grid_size-1) for y in range(env.grid_size-2, -1, -1) if (x, y) not in [(0, 0), (0, 1), (1, 0), (1, 1)]]
