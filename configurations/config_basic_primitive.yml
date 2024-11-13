@@ -2,14 +2,14 @@ action_freq: 1
 action_type: primitive
 batch_size: 128
 checkpoint_interval: 1500
-checkpoint_path: checkpoint/checkpoint-10col-gr.pt
-model_path: model_weights/model-10col-gr.pt
+checkpoint_path: checkpoint/checkpoint-10col-e.pt
+model_path: model_weights/model-10col-e.pt
 environment: 3
 epsilon_end: 0.01
 epsilon_start: 1.0
-epsilon_steps: 10000
+epsilon_steps: 15000
 gamma: 0.99
-log_file: output_logs/train-10col-gr.log
+log_file: output_logs/train-10col-e.log
 lr: 0.0005
 ministep_size: 0.25
 model: resnet
@@ -27,12 +27,13 @@ state_info: multiinfo
 
 # Rewards
 collision_penalty:      10
-action_penalty:         0
-no_movement_penalty:    0
 push_reward:            5
-obj_to_goal_reward:     1000
-exploration_reward:     0
+obj_to_goal_reward:     100
+action_penalty:         0
 partial_rewards_scale:  1
+
+no_movement_penalty:    0
+exploration_reward:     0
 corner_penalty:         0 #10
 
 # Only need if environment is 3
