@@ -32,4 +32,4 @@ module purge && module load pytorch2.1-cuda11.8-python3.9
 # demonstrates how to perform checkpointing in pytorch, please navigate to the
 # file for more information.
 source venv/bin/activate
-python train.py --config_file $PWD/configurations/config_basic_primitive.yml
+python train.py --config_file $PWD/configurations/config_train_complex.yml
