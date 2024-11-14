@@ -293,17 +293,17 @@ class Train_DQL():
         goal_distance = torch.sqrt((x_indices - goal_x)**2 + (y_indices - goal_y)**2)
 
         # to visualize the multiinfo tensor
-        fig, axs = plt.subplots(1, 4, figsize=(20, 5))
-        axs[0].imshow(grayscale[0].cpu().numpy(), cmap='gray')
-        axs[0].set_title('Grayscale')
-        axs[1].imshow(agent_mask[0].cpu().numpy(), cmap='gray')
-        axs[1].set_title('Agent Mask')
-        axs[2].imshow(agent_distance[0].cpu().numpy(), cmap='hot')
-        axs[2].set_title('Agent Distance')
-        axs[3].imshow(goal_distance[0].cpu().numpy(), cmap='hot')
-        axs[3].set_title('Goal Distance')
-        plt.show()
-        input()
+        # fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+        # axs[0].imshow(grayscale[0].cpu().numpy(), cmap='gray')
+        # axs[0].set_title('Grayscale')
+        # axs[1].imshow(agent_mask[0].cpu().numpy(), cmap='gray')
+        # axs[1].set_title('Agent Mask')
+        # axs[2].imshow(agent_distance[0].cpu().numpy(), cmap='hot')
+        # axs[2].set_title('Agent Distance')
+        # axs[3].imshow(goal_distance[0].cpu().numpy(), cmap='hot')
+        # axs[3].set_title('Goal Distance')
+        # plt.show()
+        # input()
 
         # Fill the multiinfo tensor with the grayscale image, the agent mask, the agent distance, and the goal distance
         multiinfo_batch[:, 0] = grayscale / 255.0
@@ -411,7 +411,7 @@ class Train_DQL():
 
                     elif self.action_type == 'straight-line-navigation':
                         reward, epi, done = self.sln_action_control(self.policies[0], frame, epi, timeout=timeout)
-                        print(reward)
+                        # print(reward)
 
                 self.state = self.next_state
 
