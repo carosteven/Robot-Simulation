@@ -28,6 +28,7 @@ class Push_Empty_Small_Env(object):
         self.config = config
 
         self.state_type = config['state_type'] if config is not None else 'vision'
+        self.state_info =  config['state_info'] if config is not None else 'colour'
         # self.MINISTEP_SIZE = config['ministep_size']            # Scaling for distance moved by agent
 
         # Space
@@ -53,7 +54,7 @@ class Push_Empty_Small_Env(object):
         # Static barrier walls (lines) that the balls bounce off of
         self._add_static_scenery()
         
-        self.goal_position = (25,75)
+        self.goal_position = (35,35)
         # self.initial_box_dists = [distance(box.position, self.goal_position) for box in self._boxes]
         # self.initial_object_dist = distance(self._object.position, self.goal_position)
 
@@ -75,12 +76,6 @@ class Push_Empty_Small_Env(object):
         self.initial_agent_pos = self._agent['robot'].position
         self.agent_distance = 0
 
-        # Update the screen before capturing initial state
-        self._update()
-        self._clear_screen()
-        self._draw_objects()
-        pygame.display.flip()
-
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
         '''
@@ -95,6 +90,8 @@ class Push_Empty_Small_Env(object):
         # Agent cumulative rewards
         self.reward = 0
         self.reward_from_last_action = 0
+
+        self.nonmovement_tracker = [1]*5
 
         # Rewards
         self.collision_penalty      = config['collision_penalty'] if config is not None else 10
@@ -159,13 +156,12 @@ class Push_Empty_Small_Env(object):
         self._space.add(*static_border)
 
         static_goal = [
-            pymunk.Poly(static_body, ((0,0), (50,0), (50,150), (0, 150))),
+            pymunk.Poly(static_body, ((0,0), (70,0), (70,70), (0, 70))),
         ]
         
         static_goal[0].color = (0, 255, 0, 255)
         static_goal[0].collision_type = 2
         static_goal[0].filter = pymunk.ShapeFilter(categories=0b101)
-
         self._space.add(*static_goal)
 
     def _create_object(self, id: int, radius: float, mass: float, position: tuple[int] = (0,0), elasticity: float = 0, friction: float = 1.0, damping: float = 0.0) -> pymunk.Poly:
@@ -274,10 +270,13 @@ class Push_Empty_Small_Env(object):
 
             if action is not None:
                 self.reward += self.reward_from_last_action
+                print(self.reward_from_last_action)
                 self.reward_from_last_action = 0
 
             # Calculate reward
             self.reward_from_last_action += self.get_reward(True if action is not None else False)
+            # if action is not None:
+            #     print(self.reward_from_last_action)
             # self.reward = self.get_reward(True if action is not None else False)
 
             # Calculate reward
@@ -288,13 +287,14 @@ class Push_Empty_Small_Env(object):
             if self._done:
                 self.reset()
     
-    def step(self, action, primitive=False, test=False):
+    def step(self, action, primitive=False, test=False) -> tuple:
         """
         Progress the simulation one time step
         inputs: action
         outputs: state, reward, done, info
         """
         # Progress time forward
+        self.agent_last_pos = self._agent['robot'].position
         for x in range(self._physics_steps_per_frame):
             self._space.step(self._dt)
 
@@ -308,6 +308,7 @@ class Push_Empty_Small_Env(object):
         if self.action_completed:
             self.agent_distance = distance(self._agent['robot'].position, self.initial_agent_pos)
             self.initial_agent_pos = self._agent['robot'].position
+            self.nonmovement_tracker = [1]*5
             
         self._update()
         self._clear_screen()
@@ -460,14 +461,6 @@ class Push_Empty_Small_Env(object):
         return True
 
     def straight_line_navigation(self, coords) -> bool:
-        end_action = False
-        for box in self._boxes.values():
-            if box['push_occuring'] and box['collision_occuring']:
-                end_action = True
-        if self.collision_occuring or end_action or self._done:
-            # self._actions('backward')
-            return True
-        
         # Get the heading of the robot
         angle = (self._agent['robot'].angle - (np.pi/2)) % (2*np.pi)
 
@@ -502,9 +495,17 @@ class Push_Empty_Small_Env(object):
                 self._actions('turn_cw')
             else:
                 self._actions('turn_ccw')
-        return False
-        
 
+        self.nonmovement_tracker.append(distance(self._agent['robot'].position, self.agent_last_pos))
+        self.nonmovement_tracker.pop(0)
+        dist_travelled = 0
+        for dist in self.nonmovement_tracker:
+            dist_travelled += dist
+
+        if dist_travelled < 0.5:
+            return True
+        
+        return False
 
     def collision_begin(self, arbiter, space, dummy):
         shapes = arbiter.shapes
@@ -573,8 +574,17 @@ class Push_Empty_Small_Env(object):
         """
         Gets integer pixel values from screen
         """
-        self.state = (np.array(self.pxarr).astype(np.float64)/2e32).transpose()
-        self.state = np.resize(rescale(self.state, 0.5)*2e32, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
+        state = (np.array(self.pxarr).astype(np.float64)/2e32).transpose()
+        state = np.resize(rescale(state, 0.5)*2e32, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
+        
+        if self.state_info == 'colour':
+            self.state = state
+        
+        elif self.state_info == 'multiinfo':
+            self.state = []
+            self.state.append(state)
+            # append agent position
+            self.state.append(self._agent['robot'].position)
 
     def get_reward(self, action_taken: bool, primitive=False):
         """
@@ -591,7 +601,7 @@ class Push_Empty_Small_Env(object):
 
         if self.collision_occuring:
             reward -= self.collision_penalty
-            print("Collision")
+            # print("Collision")
             reward_tracker += ":collision penalty: "
 
         if self.is_pushing:
@@ -599,7 +609,8 @@ class Push_Empty_Small_Env(object):
             reward_tracker += ":push: "
 
         self.boxes_in_goal = self.boxes_remaining-len(self._boxes)
-        reward += (self.boxes_in_goal)*self.obj_to_goal_reward
+        if self.boxes_in_goal > 0:
+            reward += (self.boxes_in_goal)*self.obj_to_goal_reward
         self.boxes_remaining = len(self._boxes)
         
         '''
@@ -610,11 +621,14 @@ class Push_Empty_Small_Env(object):
         # print(reward_tracker, self.reward_from_last_action)
 
         # Calculate reward for pushing object closer to goal
+        dist_tracker = 0
         for box in self._boxes.values():
             dist = distance(box['body'].position, self.goal_position)
             dist_moved = box['initial_dist'] - dist
             box['initial_dist'] = dist
             reward += self.partial_rewards_scale*dist_moved
+            dist_tracker += dist_moved*self.partial_rewards_scale
+        reward_tracker += f":dist moved: {dist_tracker} "
 
         # dist = distance(self._object.position, self.goal_position)
         # dist_moved = self.initial_object_dist - dist
@@ -626,19 +640,16 @@ class Push_Empty_Small_Env(object):
     
     def reset(self):
         cumulative_reward = self.reward
-        reward_from_last_action = self.reward_from_last_action
-        # action_function = self.take_action
         self.__init__(self.config)
         self.reward = cumulative_reward
-        # self.reward_from_last_action = reward_from_last_action
-        # self.take_action = action_function
         return self.state
         
     def close(self):
         self._running = False
 
 def main():
-    config_path = 'configurations/config_push_small_sln_push_rews.yml'
+    # config_path = 'configurations/config_train_complex.yml'
+    config_path = 'configurations/config_test.yml'
     with open(config_path) as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
     game = Push_Empty_Small_Env(config)
