@@ -381,7 +381,7 @@ class Train_DQL():
             env.training_step += 1
             env.config['num_boxes'] -= 5
             for policy in self.policies:
-                policy['epsilon'] = self.STARTING_EPSILON
+                policy['epsilon'] = self.STARTING_EPSILON if not self.test else self.EPSILON_END
         
         # else:
         #     self.box_positions = [(x, y) for x in range(env.grid_size-1) for y in range(env.grid_size-2, -1, -1) if (x, y) not in [(0, 0), (0, 1), (1, 0), (1, 1)]]
@@ -637,8 +637,8 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        default= 'configurations/config_basic_test.yml'
-        # default= 'configurations/config_basic_primitive.yml'
+        # default= 'configurations/config_basic_test.yml'
+        default= 'configurations/config_basic_primitive.yml'
     )
 
     parser.add_argument(
