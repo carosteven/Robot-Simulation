@@ -1,15 +1,16 @@
+### BASIC ENV ###
 action_freq: 1
 action_type: primitive
 batch_size: 128
 checkpoint_interval: 1500
-checkpoint_path: checkpoint/checkpoint-curr-y-e-pr.pt
-model_path: model_weights/model-curr-y-e-pr.pt
+checkpoint_path: checkpoint/checkpoint-curr-y-e.pt
+model_path: model_weights/model-curr-y-e.pt
 environment: 3
 epsilon_end: 0.01
 epsilon_start: 1.0
 epsilon_steps: 10000
 gamma: 0.95
-log_file: output_logs/train-curr-y-e-pr.log
+log_file: output_logs/train-curr-y-e.log
 lr: 0.0005
 ministep_size: 0.25
 model: resnet
@@ -27,7 +28,7 @@ state_info: multiinfo
 
 # Rewards
 collision_penalty:      10
-push_reward:            1
+push_reward:            0
 partial_rewards_scale:  1
 obj_to_goal_reward:     1000
 

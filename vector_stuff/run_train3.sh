@@ -14,7 +14,7 @@
 # We also recommend users to create a symlink of the checkpoint dir so your
 # training code stays the same with regards to different job IDs and it would
 # be easier to navigate the checkpoint directory
-ln -sfn /checkpoint/${USER}/${SLURM_JOB_ID} $PWD/checkpoint
+ln -sfn /checkpoint/${USER}/${SLURM_JOB_ID} $PWD/checkpoint/${SLURM_JOB_ID}
 
 
 # In the future, the checkpoint directory will be removed immediately after the
@@ -32,4 +32,4 @@ module purge && module load pytorch2.1-cuda11.8-python3.9
 # demonstrates how to perform checkpointing in pytorch, please navigate to the
 # file for more information.
 source venv/bin/activate
-python train.py --config_file $PWD/configurations/config_basic_primitive.yml
+python train.py --config_file $PWD/configurations/config_3.yml
