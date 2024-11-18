@@ -52,7 +52,7 @@ class Basic_Env(object):
 
         # For curriculum learning
         self.num_boxes = config['num_boxes'] if config is not None else 5
-        self.training_step = 0
+        self.training_step = config['training_step'] if config is not None else 0
 
         # Environment
         self.grid_size = config['grid_size'] if config is not None else 10

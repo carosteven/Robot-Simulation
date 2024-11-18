@@ -637,8 +637,9 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
+        default= 'configurations/config_basic_eval.yml'
         # default= 'configurations/config_basic_test.yml'
-        default= 'configurations/config_basic_primitive.yml'
+        # default= 'configurations/config_basic_primitive.yml'
     )
 
     parser.add_argument(
