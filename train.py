@@ -60,6 +60,7 @@ class Train_DQL():
         self.num_epochs = config['num_epochs']
         self.num_of_batches_before_train = config['num_of_batches_before_train']
         self.test = test
+        self.curriculum = config['curriculum']
         # Get number of actions from env
         self.n_actions = len(env.available_actions) if config['action_type'] == 'primitive' else env.screen_size[0]*env.screen_size[1]
 
@@ -382,9 +383,6 @@ class Train_DQL():
             env.config['num_boxes'] -= 5
             for policy in self.policies:
                 policy['epsilon'] = self.STARTING_EPSILON if not self.test else self.EPSILON_END
-        
-        # else:
-        #     self.box_positions = [(x, y) for x in range(env.grid_size-1) for y in range(env.grid_size-2, -1, -1) if (x, y) not in [(0, 0), (0, 1), (1, 0), (1, 1)]]
 
     def train(self):
         start_time = time.time()
@@ -396,7 +394,8 @@ class Train_DQL():
 
         for epoch in tqdm(range(self.num_epochs)):
             # Reset environment and get new state
-            self.scheduler()
+            if self.curriculum:
+                self.scheduler()
             self.state = self.get_state(env.reset())
             self.contact_made = False
             logging.info(f'Epoch {self.epoch}')
