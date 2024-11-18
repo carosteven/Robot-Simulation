@@ -383,8 +383,12 @@ class Train_DQL():
             self.last_epi_box_in_goal = 0
             done = False
             timeout = False
+            timeout = False
             # for frame in tqdm(range(100000)):
             for frame in count():
+                if epi > self.last_epi_box_in_goal + self.no_goal_timeout:
+                    timeout = True
+
                 if epi > self.last_epi_box_in_goal + self.no_goal_timeout:
                     timeout = True
 
@@ -407,7 +411,7 @@ class Train_DQL():
 
                 else:
                     if self.action_type == 'primitive':
-                        reward, epi, done = self.primitive_action_control(self.policies[0], frame, epi)
+                        reward, epi, done = self.primitive_action_control(self.policies[0], frame, epi, timeout=timeout)
 
                     elif self.action_type == 'straight-line-navigation':
                         reward, epi, done = self.sln_action_control(self.policies[0], frame, epi, timeout=timeout)
@@ -466,7 +470,7 @@ class Train_DQL():
         epi += 1
         return total_reward, epi, done
 
-    def primitive_action_control(self, policy, frame, epi, action=None):
+    def primitive_action_control(self, policy, frame, epi, action=None, timeout=False):
         if action is not None:
             total_reward = 0
             for frame in range(self.action_freq):
@@ -476,7 +480,7 @@ class Train_DQL():
                 elif frame == self.action_freq - 1:
                     env.action_completed = True
                     next_state, reward, done, _ = env.step(None, primitive=True)
-                    if done:
+                    if done: # or timeout
                         self.next_state = None
                     else:
                         self.next_state = torch.tensor(next_state, dtype=torch.int32, device=self.device).unsqueeze(0)
@@ -512,7 +516,7 @@ class Train_DQL():
         if frame % self.action_freq == self.action_freq - 1:
             # Store the transition in memory after reward has been accumulated
             next_state, reward, done, info = env.step(None, primitive=True)
-            if done:
+            if done or timeout:
                 # self.episodic_stats['cumulative_reward'].append(info['cumulative_reward'])
                 self.next_state = None
             else:
