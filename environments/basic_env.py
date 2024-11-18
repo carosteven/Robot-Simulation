@@ -50,6 +50,10 @@ class Basic_Env(object):
         self._draw_options = pymunk.pygame_util.DrawOptions(self._screen)
         self.pxarr = pygame.PixelArray(self._draw_options.surface)
 
+        # For curriculum learning
+        self.num_boxes = config['num_boxes'] if config is not None else 5
+        self.training_step = config['training_step'] if config is not None else 0
+
         # Environment
         self.grid_size = config['grid_size'] if config is not None else 10
         self.gridscale = self.screen_size[0] // self.grid_size
@@ -257,8 +261,8 @@ class Basic_Env(object):
 
             # Calculate reward
             self.reward_from_last_action += self.get_reward(True if action is not None else False)
-            if action is not None:
-                print(self.reward_from_last_action)
+            # if action is not None:
+            #     print(self.reward_from_last_action)
 
             # self.reward = self.get_reward(True if action is not None else False)
 
@@ -354,7 +358,14 @@ class Basic_Env(object):
                     elif keys[pygame.K_RIGHT]:
                         action = 'E'
                     elif keys[pygame.K_SPACE]:
-                        print(self.grid_world)
+                        grid_world = np.zeros_like(self.grid_world)
+                        for i, row in enumerate(self.grid_world):
+                            for j, cell in enumerate(row):
+                                if cell != '':
+                                    grid_world[i][j] = cell
+                                else:
+                                    grid_world[i][j] = ' '
+                        print(grid_world)
         return action
     
     def _update(self) -> None:
@@ -417,7 +428,7 @@ class Basic_Env(object):
         """
         for box in self._boxes.values():
             if grid_coords == self.env_to_grid(box['body'].position):
-                return box['body'].label[-1]
+                return box['body'].label.split('_')[-1]
         return -1       
     
     def check_collision(self, grid_coords, action, obj_type, box_idx=None) -> bool:
@@ -479,7 +490,7 @@ class Basic_Env(object):
                 self._boxes[box_idx]['body'].in_corner = True
 
         
-        if len(self._boxes) == 0:
+        if len(self._boxes) == self.num_boxes - (self.training_step+1):
             self._done = True
 
         return collision_detected
@@ -594,8 +605,10 @@ class Basic_Env(object):
     
     def reset(self):
         cumulative_reward = self.reward
+        training_step = self.training_step
         self.__init__(self.config)
         self.reward = cumulative_reward
+        self.training_step = training_step
         return self.state
         
     def close(self):
