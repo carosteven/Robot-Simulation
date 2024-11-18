@@ -5,7 +5,10 @@ venv38/
 *.out
 *.log
 *.pyc
+*.slrm
 checkpoint/
+configurations/
+vector_stuff/
 logs/
 __pycache__/
 model_weights/

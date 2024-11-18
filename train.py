@@ -276,10 +276,10 @@ class Train_DQL():
         y_indices = y_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
         x_indices = x_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
         
-        agent_mask = ((x_indices >= (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) - 7)) & 
-                  (x_indices < (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) + 7)) & 
-                  (y_indices >= (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) - 7)) & 
-                  (y_indices < (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) + 7))).float()
+        agent_mask = ((x_indices >= (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) - 12)) & 
+                  (x_indices < (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) + 12)) & 
+                  (y_indices >= (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) - 12)) & 
+                  (y_indices < (agent_pos[:, 1].unsqueeze(1).unsqueeze(2) + 12))).float()
 
         # Calculate the distance from the agent to every pixel
         y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
@@ -382,8 +382,12 @@ class Train_DQL():
             epi = 0
             self.last_epi_box_in_goal = 0
             done = False
+            timeout = False
             # for frame in tqdm(range(100000)):
             for frame in count():
+                if epi > self.last_epi_box_in_goal + self.no_goal_timeout:
+                    timeout = True
+
                 if self.options:
                     option = self.get_action(self.policies[0])
                     if option == 0:
@@ -406,7 +410,8 @@ class Train_DQL():
                         reward, epi, done = self.primitive_action_control(self.policies[0], frame, epi)
 
                     elif self.action_type == 'straight-line-navigation':
-                        _, epi, done = self.sln_action_control(self.policies[0], frame, epi)
+                        reward, epi, done = self.sln_action_control(self.policies[0], frame, epi, timeout=timeout)
+                        # print(reward)
 
                 self.state = self.next_state
 
@@ -420,21 +425,16 @@ class Train_DQL():
                     self.commit_state()
                     start_time = cur_time
                 
-                # if env.is_pushing:
-                #     self.last_epi_box_in_goal = epi
-
-                if epi > self.last_epi_box_in_goal + self.no_goal_timeout:
-                    done = True
-                    logging.info(f"Inactivity timeout. {env.config['num_boxes'] - env.boxes_remaining} in goal. Resetting environment...")
-
-                if done:
-                    if epi <= self.last_epi_box_in_goal + self.no_goal_timeout:
+                if done or timeout:
+                    if timeout:
+                        logging.info(f"Inactivity timeout. {env.config['num_boxes'] - env.boxes_remaining} in goal. Resetting environment...")
+                    if done:
                         logging.info("All boxes in receptacle. Resetting environment...")
                     break
 
             self.epoch += 1
 
-    def sln_action_control(self, policy, frame, epi):
+    def sln_action_control(self, policy, frame, epi, timeout=False):
         self.action = self.get_action(policy)
         action = np.unravel_index(self.action[0,0].cpu(), (int(env.screen_size[0]/2), int(env.screen_size[1]/2)))
         action = (action[0]*2, action[1]*2)
@@ -448,19 +448,20 @@ class Train_DQL():
                 self.last_epi_box_in_goal = epi
         env.action_completed = False
 
-        if done:
+        if done or timeout:
             self.next_state = None
         else:
-            self.next_state = torch.tensor(next_state, dtype=torch.int32, device=self.device).unsqueeze(0)
+            # self.next_state = torch.tensor(next_state, dtype=torch.int32, device=self.device).unsqueeze(0)
+            self.next_state = self.get_state(next_state)
             
         total_reward = torch.tensor([total_reward], device=self.device)
-        policy['memory'].push(self.state, self.action, self.next_state, total_reward, info['distance'])
 
-        # self.state = self.next_state #############
-    
-        # Train after collecting sufficient experience
-        if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
-            self.update_networks(policy, epi)
+        if not self.test:
+            policy['memory'].push(self.state, self.action, self.next_state, total_reward, info['distance'])
+        
+            # Train after collecting sufficient experience
+            if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
+                self.update_networks(policy, epi)
 
         epi += 1
         return total_reward, epi, done
@@ -607,8 +608,8 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        # default= 'configurations/config_basic_test.yml'
-        default= 'configurations/config_basic_primitive.yml'
+        default= 'configurations/config_test.yml'
+        # default= 'configurations/config_basic_primitive.yml'
     )
 
     parser.add_argument(
