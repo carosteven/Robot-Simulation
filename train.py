@@ -150,7 +150,6 @@ class Train_DQL():
         self.epoch = 0
         loss = 0
         epsilon = self.STARTING_EPSILON
-
         if os.path.exists(self.checkpoint_path):
             training_state = torch.load(self.checkpoint_path, map_location=self.device)
             # Remove the last element from the stats since it is not complete
@@ -158,6 +157,11 @@ class Train_DQL():
                 if len(training_state['stats'][key]) > 0:
                     training_state['stats'][key].pop()
             self.episodic_stats = training_state['stats']
+
+            if self.curriculum:
+                env.training_step = training_state['training_step']
+                env.config['num_boxes'] = training_state['num_boxes']
+                self.state = self.get_state(env.reset())
 
             if self.test:
                 policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
@@ -183,6 +187,8 @@ class Train_DQL():
         training_state = {}
         training_state['epoch'] = self.epoch
         training_state['stats'] = self.episodic_stats
+        training_state['training_step'] = env.training_step
+        training_state['num_boxes'] = env.config['num_boxes']
         for i in range(self.num_policies):
             training_state[f'policy_state_dict_{i}'] = self.policies[i]['policy_net'].state_dict()
             training_state[f'target_state_dict_{i}'] = self.policies[i]['target_net'].state_dict()
@@ -631,8 +637,8 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        default= 'configurations/config_basic_eval.yml'
-        # default= 'configurations/config_basic_test.yml'
+        # default= 'configurations/config_basic_eval.yml'
+        default= 'configurations/config_basic_test.yml'
         # default= 'configurations/config_basic_primitive.yml'
     )
 
