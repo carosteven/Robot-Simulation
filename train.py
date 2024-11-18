@@ -114,12 +114,7 @@ class Train_DQL():
         elif self.state_info == 'multiinfo':
             state = []
             state.append(torch.tensor(raw_state[0], dtype=torch.int32, device=self.device).unsqueeze(0))
-            # NOTE this is a hack to get the agent position into the state tensor
-            # because the state tensor has to be the same shape. Could save a lot of storage by not doing this
-            state.append(torch.zeros_like(state[0], device=self.device, dtype=torch.int32))
-            state[1][0,0,0,0] = raw_state[1][0]
-            state[1][0,0,0,1] = raw_state[1][1]
-            state = torch.stack(state, dim=1)
+            state.append(torch.tensor(np.array([raw_state[1].x, raw_state[1].y]), dtype=torch.int32, device=self.device).unsqueeze(0))
         return state
 
 
@@ -219,7 +214,7 @@ class Train_DQL():
                 action = np.random.randint(policy['n_actions'])
 
         else:
-            qvalues = policy['policy_net'](self.transform_state(self.state))
+            qvalues = policy['policy_net'](self.transform_state(self.state[0], self.state[1]))
             action = torch.argmax(qvalues).item()
             
         action = torch.tensor([[action]], device=self.device, dtype=torch.long)
@@ -241,25 +236,22 @@ class Train_DQL():
         colour_batch = colour_batch / 255.0
         return colour_batch
     
-    def trans_multiinfo_state(self, state_batch):
+    def trans_multiinfo_state(self, state_image_batch, state_position_batch):
         # Returns a tensor of shape (batch_size, 4, height, width)
         # Channel 0: Grayscale image
         # Channel 1: Mask of the agent
         # Channel 2: Distance from the agent to every pixel
         # Channel 3: Distance from the goal to every pixel
-        # state_batch is a tensor of shape (batch_size, 2)
-        # where the first element is an integer rgb array of the environment and the second element is the position of the agent
         
         # Extract the rgb array and the agent position
-        image = state_batch[:, 0, 0]
-        agent_pos = state_batch[:,1,0,0,0:2]/2
-        agent_pos = agent_pos.int()
+        image = state_image_batch[:, 0]
+        agent_pos = state_position_batch[:]/2
 
         # Get the height and width of the image
         height, width = image.shape[1], image.shape[2]
 
         # Create a tensor of shape (batch_size, 4, height, width) filled with zeros
-        multiinfo_batch = torch.zeros((state_batch.shape[0], 4, height, width), device=self.device, dtype=torch.float32)
+        multiinfo_batch = torch.zeros((state_image_batch.shape[0], 4, height, width), device=self.device, dtype=torch.float32)
 
         # Extract the red, green, and blue channels from the rgb array
         red = torch.bitwise_and(torch.bitwise_right_shift(image, 16), 255)
@@ -270,11 +262,11 @@ class Train_DQL():
         grayscale = 0.2989 * red + 0.5870 * green + 0.1140 * blue
 
         # Calculate the mask of the agent (28 pixels (scaled so 14) around the agent)
-        agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
-        agent_mask = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        agent_mask = torch.zeros((state_image_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        agent_mask = torch.zeros((state_image_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
         y_indices, x_indices = torch.meshgrid(torch.arange(height, device=self.device), torch.arange(width, device=self.device), indexing='ij')
-        y_indices = y_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
-        x_indices = x_indices.unsqueeze(0).expand(state_batch.shape[0], -1, -1)
+        y_indices = y_indices.unsqueeze(0).expand(state_image_batch.shape[0], -1, -1)
+        x_indices = x_indices.unsqueeze(0).expand(state_image_batch.shape[0], -1, -1)
         
         agent_mask = ((x_indices >= (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) - 12)) & 
                   (x_indices < (agent_pos[:, 0].unsqueeze(1).unsqueeze(2) + 12)) & 
@@ -287,7 +279,7 @@ class Train_DQL():
         agent_distance = torch.sqrt((x_indices - agent_pos[:, 0].unsqueeze(1).unsqueeze(2))**2 + (y_indices - agent_pos[:, 1].unsqueeze(1).unsqueeze(2))**2)
 
         # Calculate the distance from the goal to every pixel
-        goal_distance = torch.zeros((state_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
+        goal_distance = torch.zeros((state_image_batch.shape[0], height, width), device=self.device, dtype=torch.float32)
         goal_position = torch.tensor(env.goal_position, device=self.device, dtype=torch.float32) / 2
         goal_x, goal_y = goal_position[0], goal_position[1]
         goal_distance = torch.sqrt((x_indices - goal_x)**2 + (y_indices - goal_y)**2)
@@ -321,8 +313,8 @@ class Train_DQL():
 
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                                 batch.next_state)), device=self.device, dtype=torch.bool)
-        non_final_next_states = self.transform_state(torch.cat([s for s in batch.next_state if s is not None]))
-        state_batch = self.transform_state(torch.cat(batch.state)).to(self.device)
+        non_final_next_states = self.transform_state(torch.cat([s[0] for s in batch.next_state if s is not None]), torch.cat([s[1] for s in batch.next_state if s is not None])).to(self.device)
+        state_batch = self.transform_state(torch.cat([s[0] for s in batch.next_state]), torch.cat([s[1] for s in batch.next_state])).to(self.device)
         action_batch = torch.cat(batch.action).to(self.device)
         reward_batch = torch.cat(batch.reward).to(self.device)
         distance_batch = torch.tensor(batch.distance, device=self.device, dtype=torch.float)
@@ -612,6 +604,8 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
+
+        # default= 'configurations/config_basic_test.yml'
         default= 'configurations/config_test.yml'
         # default= 'configurations/config_basic_primitive.yml'
     )
