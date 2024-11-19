@@ -487,7 +487,7 @@ class Train_DQL():
 
         if not self.test:
             policy['memory'].push(self.state, self.action, self.next_state, total_reward, info['ministeps'])
-            print(total_reward, info['ministeps'])
+            # print(total_reward, info['ministeps'])
         
             # Train after collecting sufficient experience
             if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
