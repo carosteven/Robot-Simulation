@@ -29,7 +29,7 @@ logging.getLogger('pymunk').propagate = False
 env = None
 
 Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward', 'distance'))
+                        ('state', 'action', 'next_state', 'reward', 'ministep'))
 
 
 
@@ -325,7 +325,7 @@ class Train_DQL():
         state_batch = self.transform_state(torch.cat([s[0] for s in batch.next_state]), torch.cat([s[1] for s in batch.next_state])).to(self.device)
         action_batch = torch.cat(batch.action).to(self.device)
         reward_batch = torch.cat(batch.reward).to(self.device)
-        distance_batch = torch.tensor(batch.distance, device=self.device, dtype=torch.float)
+        ministep_batch = torch.tensor(batch.ministep, device=self.device, dtype=torch.float)
 
         # Get Q(s, a) for every (s, a) in the minibatch
         qvalues = policy['policy_net'](state_batch).gather(1, action_batch.view(-1, 1)).squeeze()
@@ -335,7 +335,7 @@ class Train_DQL():
         with torch.no_grad():
             actions = torch.argmax(policy['policy_net'](non_final_next_states), dim=1)
             q_target_values[non_final_mask] = policy['target_net'](non_final_next_states).gather(1, actions.unsqueeze(1)).squeeze()
-        targets = reward_batch + torch.pow(self.GAMMA, distance_batch) * q_target_values
+        targets = reward_batch + torch.pow(self.GAMMA, ministep_batch) * q_target_values
 
         # Detach y since it is the target. Target values should
         # be kept fixed.
@@ -470,7 +470,7 @@ class Train_DQL():
 
         total_reward = 0
         while not env.action_completed:
-            next_state, reward, done, info = env.step(action)
+            next_state, reward, done, info = env.step(action, test=self.test)
             total_reward += reward
             if env.boxes_in_goal != 0:
                 logging.info(f"{env.boxes_in_goal} boxes added to receptacle.")
@@ -486,7 +486,8 @@ class Train_DQL():
         total_reward = torch.tensor([total_reward], device=self.device)
 
         if not self.test:
-            policy['memory'].push(self.state, self.action, self.next_state, total_reward, info['distance'])
+            policy['memory'].push(self.state, self.action, self.next_state, total_reward, info['ministeps'])
+            print(total_reward, info['ministeps'])
         
             # Train after collecting sufficient experience
             if len(policy['memory']) >= self.BATCH_SIZE*self.num_of_batches_before_train:
@@ -638,8 +639,8 @@ if __name__ == "__main__":
         type=str,
         help='path of the configuration file',
         # default= 'configurations/config_basic_eval.yml'
-        default= 'configurations/config_basic_test.yml'
-        # default= 'configurations/config_basic_primitive.yml'
+        # default= 'configurations/config_basic_test.yml'
+        default= 'configurations/config_cmplx_test.yml'
     )
 
     parser.add_argument(
