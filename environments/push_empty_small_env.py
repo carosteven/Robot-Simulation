@@ -51,6 +51,10 @@ class Push_Empty_Small_Env(object):
         self._draw_options = pymunk.pygame_util.DrawOptions(self._screen)
         self.pxarr = pygame.PixelArray(self._draw_options.surface)
 
+        # For curriculum learning
+        self.num_boxes = config['num_boxes'] if config is not None else 5
+        self.training_step = config['training_step'] if config is not None else 0
+
         # Static barrier walls (lines) that the balls bounce off of
         self._add_static_scenery()
         

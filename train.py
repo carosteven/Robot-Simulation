@@ -322,7 +322,7 @@ class Train_DQL():
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                                 batch.next_state)), device=self.device, dtype=torch.bool)
         non_final_next_states = self.transform_state(torch.cat([s[0] for s in batch.next_state if s is not None]), torch.cat([s[1] for s in batch.next_state if s is not None])).to(self.device)
-        state_batch = self.transform_state(torch.cat([s[0] for s in batch.next_state]), torch.cat([s[1] for s in batch.next_state])).to(self.device)
+        state_batch = self.transform_state(torch.cat([s[0] for s in batch.state]), torch.cat([s[1] for s in batch.state])).to(self.device)
         action_batch = torch.cat(batch.action).to(self.device)
         reward_batch = torch.cat(batch.reward).to(self.device)
         ministep_batch = torch.tensor(batch.ministep, device=self.device, dtype=torch.float)
@@ -407,7 +407,6 @@ class Train_DQL():
             epi = 0
             self.last_epi_box_in_goal = 0
             done = False
-            timeout = False
             timeout = False
             # for frame in tqdm(range(100000)):
             for frame in count():
