@@ -158,16 +158,16 @@ class Train_DQL():
                     training_state['stats'][key].pop()
             self.episodic_stats = training_state['stats']
 
-            if self.curriculum:
-                env.training_step = training_state['training_step']
-                env.config['num_boxes'] = training_state['num_boxes']
-                self.state = self.get_state(env.reset())
-
             if self.test:
                 policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
                 self.show_stats(self.episodic_stats)
                 epsilon = self.EPSILON_END
+
             else:
+                if self.curriculum:
+                    env.training_step = training_state['training_step']
+                    env.config['num_boxes'] = training_state['num_boxes']
+                    self.state = self.get_state(env.reset())
                 training_state = torch.load(self.checkpoint_path)
                 self.epoch = training_state['epoch']
                 policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
@@ -639,6 +639,7 @@ if __name__ == "__main__":
         help='path of the configuration file',
         # default= 'configurations/config_basic_eval.yml'
         # default= 'configurations/config_basic_test.yml'
+        # default= 'configurations/config_cmplx_eval.yml'
         default= 'configurations/config_cmplx_test.yml'
     )
 
