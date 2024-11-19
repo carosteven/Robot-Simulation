@@ -29,7 +29,7 @@ class Push_Empty_Small_Env(object):
 
         self.state_type = config['state_type'] if config is not None else 'vision'
         self.state_info =  config['state_info'] if config is not None else 'colour'
-        # self.MINISTEP_SIZE = config['ministep_size']            # Scaling for distance moved by agent
+        self.MINISTEP_SIZE = config['ministep_size']            # Scaling for distance moved by agent
 
         # Space
         self._space = pymunk.Space()
@@ -75,6 +75,9 @@ class Push_Empty_Small_Env(object):
         self._agent = self._create_agent(vertices=((-25,-25), (-25,25), (25,25), (25,-25)), mass=10, position=(self.screen_size[0]*0.8, y_pos), damping=0.99)
         self.initial_agent_pos = self._agent['robot'].position
         self.agent_distance = 0
+        self.front_x = self._agent['robot'].local_to_world((0, -25)).x
+        self.front_y = self._agent['robot'].local_to_world((0, -25)).y
+        self.agent_last_pos = (self.front_x, self.front_y)
 
         self.state = np.zeros((1, self.screen_size[0], self.screen_size[1])).astype(int)
         self.get_state()
@@ -247,6 +250,8 @@ class Push_Empty_Small_Env(object):
         # Main Loop
         reached_loc = False
         while self._running:
+            self.agent_last_pos = (self.front_x, self.front_y)
+
             # Progress time forward
             for x in range(self._physics_steps_per_frame):
                 self._space.step(self._dt)
@@ -293,8 +298,9 @@ class Push_Empty_Small_Env(object):
         inputs: action
         outputs: state, reward, done, info
         """
+        self.agent_last_pos = (self.front_x, self.front_y)
+
         # Progress time forward
-        self.agent_last_pos = self._agent['robot'].position
         for x in range(self._physics_steps_per_frame):
             self._space.step(self._dt)
 
@@ -305,6 +311,7 @@ class Push_Empty_Small_Env(object):
             self.action_completed = self.straight_line_navigation(action)
         else:
             self._actions(action)
+
         if self.action_completed:
             self.agent_distance = distance(self._agent['robot'].position, self.initial_agent_pos)
             self.initial_agent_pos = self._agent['robot'].position
@@ -334,8 +341,9 @@ class Push_Empty_Small_Env(object):
         state = self.state
         reward = self.reward_from_last_action
         done = self._done
+        ministeps = self.agent_distance / self.MINISTEP_SIZE
         info = {
-            'distance': self.agent_distance,
+            'ministeps': ministeps,
             'inactivity': None,
             'cumulative_cubes': 0,
             'cumulative_distance': 0,
@@ -352,7 +360,7 @@ class Push_Empty_Small_Env(object):
         action = None
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                self._running = False
+                self._done = True
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self._running = False
 
@@ -465,12 +473,12 @@ class Push_Empty_Small_Env(object):
         angle = (self._agent['robot'].angle - (np.pi/2)) % (2*np.pi)
 
         # Get the angle between the front of the robot and the coordinates
-        front_x = self._agent['robot'].local_to_world((0, -25)).x
-        front_y = self._agent['robot'].local_to_world((0, -25)).y
-        angle_to_coords = np.arctan2(coords[1] - front_y, coords[0] - front_x) % (2*np.pi)
+        self.front_x = self._agent['robot'].local_to_world((0, -25)).x
+        self.front_y = self._agent['robot'].local_to_world((0, -25)).y
+        angle_to_coords = np.arctan2(coords[1] - self.front_y, coords[0] - self.front_x) % (2*np.pi)
 
         # Get the distance between the front of the robot and the coordinates
-        dist = distance(pymunk.vec2d.Vec2d(front_x, front_y), coords)
+        dist = distance(pymunk.vec2d.Vec2d(self.front_x, self.front_y), coords)
         
         # If the robot is close enough to the coordinates, stop
         if dist < 5:
@@ -496,13 +504,13 @@ class Push_Empty_Small_Env(object):
             else:
                 self._actions('turn_ccw')
 
-        self.nonmovement_tracker.append(distance(self._agent['robot'].position, self.agent_last_pos))
+        self.nonmovement_tracker.append(distance(pymunk.vec2d.Vec2d(self.front_x, self.front_y), self.agent_last_pos))
         self.nonmovement_tracker.pop(0)
         dist_travelled = 0
         for dist in self.nonmovement_tracker:
             dist_travelled += dist
 
-        if dist_travelled < 0.5:
+        if dist_travelled < 0.45:
             return True
         
         return False
@@ -649,7 +657,7 @@ class Push_Empty_Small_Env(object):
 
 def main():
     # config_path = 'configurations/config_train_complex.yml'
-    config_path = 'configurations/config_test.yml'
+    config_path = 'configurations/config_cmplx_test.yml'
     with open(config_path) as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
     game = Push_Empty_Small_Env(config)
