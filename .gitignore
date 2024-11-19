@@ -12,3 +12,4 @@ vector_stuff/
 logs/
 __pycache__/
 model_weights/
+model_extractor.py
