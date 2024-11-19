@@ -489,9 +489,12 @@ class Basic_Env(object):
                 # box_idx = self.get_box_index(grid_coords)
                 self._boxes[box_idx]['body'].in_corner = True
 
-        
-        if len(self._boxes) == self.num_boxes - (self.training_step+1):
-            self._done = True
+        if self.config['curriculum']:
+            if len(self._boxes) == self.num_boxes - (self.training_step+1):
+                self._done = True
+        else:
+            if len(self._boxes) == 0:
+                self._done = True
 
         return collision_detected
 
