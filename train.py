@@ -62,6 +62,9 @@ class Train_DQL():
         self.num_of_batches_before_train = config['num_of_batches_before_train']
         self.test = test
         self.curriculum = config['curriculum']
+        self.resume_training = config['resume_training']
+        self.job_id_to_resume = config['job_id_to_resume']
+        self.job_name = config['job_name']
         # Get number of actions from env
         self.n_actions = len(env.available_actions) if config['action_type'] == 'primitive' else env.screen_size[0]*env.screen_size[1]
 
@@ -154,8 +157,14 @@ class Train_DQL():
         self.epoch = 0
         loss = 0
         epsilon = self.STARTING_EPSILON
-        if os.path.exists(self.checkpoint_path):
-            training_state = torch.load(self.checkpoint_path, map_location=self.device)
+        if os.path.exists(self.checkpoint_path) or self.resume_training:
+            if self.resume_training:
+                self.resume_training = False # Only true at the start (use current checkpoint path if preemption)
+                old_checkpoint_path = f'checkpoint/{self.job_id_to_resume}/checkpoint-{self.job_name}.pt'
+                training_state = torch.load(old_checkpoint_path, map_location=self.device)
+            else:
+                training_state = torch.load(self.checkpoint_path, map_location=self.device)
+
             # Remove the last element from the stats since it is not complete
             for key in training_state['stats'].keys():
                 if len(training_state['stats'][key]) > 0:
@@ -172,7 +181,7 @@ class Train_DQL():
                     env.training_step = training_state['training_step']
                     env.config['num_boxes'] = training_state['num_boxes']
                     self.state = self.get_state(env.reset())
-                training_state = torch.load(self.checkpoint_path)
+                # training_state = torch.load(self.checkpoint_path)
                 self.epoch = training_state['epoch']
                 policy_net.load_state_dict(training_state[f'policy_state_dict_{hierarchy}'])
                 target_net.load_state_dict(training_state[f'target_state_dict_{hierarchy}'])
