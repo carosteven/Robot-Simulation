@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 import os
+import sys
 import yaml
 
 import logging
@@ -48,13 +49,13 @@ class ReplayMemory(object):
         return len(self.memory)
 
 class Train_DQL():
-    def __init__(self, config, test):
+    def __init__(self, config, job_id, test):
+        print(config['job_name'])
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.action_type = config['action_type']
         self.options = config['options']
         self.num_policies = config['num_policies']
-        self.checkpoint_path = config['checkpoint_path'] if not test else config['model_path']
-        print(self.checkpoint_path.split('/')[-1])
+        self.checkpoint_path = f'checkpoint/{job_id}/checkpoint-{config["job_name"]}.pt' if not test else f'model_weights/model-{config["job_name"]}.pt'
         self.checkpoint_interval = config['checkpoint_interval']
         self.no_goal_timeout = config['no_goal_timeout']
         self.num_epochs = config['num_epochs']
@@ -66,6 +67,9 @@ class Train_DQL():
 
         self.action_freq = config['action_freq']
         self.state_info = config['state_info']
+
+        self.checkpoint_counter = 0
+        self.total_checkpoints = int(12*60*60 / self.checkpoint_interval) # 12 hours
 
         # Global variables
         self.BATCH_SIZE = config['batch_size']                  # How many examples to sample per train step
@@ -452,6 +456,11 @@ class Train_DQL():
                 if cur_time - start_time > self.checkpoint_interval and not self.test:
                     self.commit_state()
                     start_time = cur_time
+                    self.checkpoint_counter += 1
+                    if self.checkpoint_counter == self.total_checkpoints:
+                        self.model_extractor()
+                        logging.info("Time limit reached. Exiting training...")
+                        sys.exit()
                 
                 if done or timeout:
                     if timeout:
@@ -564,6 +573,19 @@ class Train_DQL():
         # print(reward)
         return reward, epi, done
     
+    def model_extractor(self):
+        model_path = f'model_weights/model-{env.config["job_name"]}.pt'
+        checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
+        if self.options:
+            for i in range(2):
+                torch.save(checkpoint[f'policy_state_dict_{i}'], model_path[:-3] + f'_{i}.pt')
+        else:
+            model = {
+                'policy_state_dict_0': checkpoint['policy_state_dict_0'],
+                'stats': checkpoint['stats'],
+            }
+            torch.save(model, model_path)
+    
     def show_stats(self, stats):
         fig, ax1 = plt.subplots()
 
@@ -596,14 +618,15 @@ class Train_DQL():
 
 def main(args):
     test = args.test
+    job_id = args.job_id
     with open(args.config_file) as file:
         config = yaml.load(file, Loader=yaml.FullLoader)
     global env
-    if config['log_file'] is not None:
-        if test:
-            logging.basicConfig(filename=config['log_file'][:-4]+'_test.log',level=logging.DEBUG)
-        else:
-            logging.basicConfig(filename=config['log_file'],level=logging.DEBUG)
+    log_dir = f'output_logs/{config["job_name"]}.log'
+    if test:
+        logging.basicConfig(filename=log_dir[:-4]+'_test.log',level=logging.DEBUG)
+    else:
+        logging.basicConfig(filename=log_dir,level=logging.DEBUG)
     
     logging.info("starting training script")
 
@@ -616,7 +639,7 @@ def main(args):
         env.take_action = env.straight_line_navigation
     '''
 
-    train = Train_DQL(config, test)
+    train = Train_DQL(config, job_id, test)
     
     # check if the checkpoint exists and try to resume from the last checkpoint
     # if you are saving for every epoch, you can skip the part about
@@ -638,9 +661,16 @@ if __name__ == "__main__":
         type=str,
         help='path of the configuration file',
         # default= 'configurations/config_basic_eval.yml'
-        # default= 'configurations/config_basic_test.yml'
+        default= 'configurations/config_basic_test.yml'
         # default= 'configurations/config_cmplx_eval.yml'
-        default= 'configurations/config_cmplx_test.yml'
+        # default= 'configurations/config_cmplx_test.yml'
+    )
+
+    parser.add_argument(
+        '--job_id',
+        type=str,
+        help='slurm job id',
+        default= 'test'
     )
 
     parser.add_argument(
