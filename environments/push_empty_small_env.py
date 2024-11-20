@@ -578,8 +578,12 @@ class Push_Empty_Small_Env(object):
                 self._boxes.pop(box)
                 self._space.remove(shapes[0], shapes[0].body)
                 break
-        if len(self._boxes) == 0:
-            self._done = True
+        if self.config['curriculum']:
+            if len(self._boxes) == self.num_boxes - (self.training_step+1):
+                self._done = True
+        else:
+            if len(self._boxes) == 0:
+                self._done = True
         return True
 
     def get_state(self):
@@ -652,8 +656,10 @@ class Push_Empty_Small_Env(object):
     
     def reset(self):
         cumulative_reward = self.reward
+        training_step = self.training_step
         self.__init__(self.config)
         self.reward = cumulative_reward
+        self.training_step = training_step
         return self.state
         
     def close(self):
