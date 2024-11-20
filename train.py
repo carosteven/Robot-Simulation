@@ -257,7 +257,7 @@ class Train_DQL():
         colour_batch = colour_batch / 255.0
         return colour_batch
     
-    def trans_multiinfo_state(self, state_image_batch, state_position_batch):
+    def trans_multiinfo_state_old(self, state_image_batch, state_position_batch):
         # Returns a tensor of shape (batch_size, 4, height, width)
         # Channel 0: Grayscale image
         # Channel 1: Mask of the agent
@@ -304,6 +304,74 @@ class Train_DQL():
         goal_position = torch.tensor(env.goal_position, device=self.device, dtype=torch.float32) / 2
         goal_x, goal_y = goal_position[0], goal_position[1]
         goal_distance = torch.sqrt((x_indices - goal_x)**2 + (y_indices - goal_y)**2)
+
+        # Fill the multiinfo tensor with the grayscale image, the agent mask, the agent distance, and the goal distance
+        multiinfo_batch[:, 0] = grayscale / 255.0
+        multiinfo_batch[:, 1] = agent_mask
+        multiinfo_batch[:, 2] = agent_distance / (304.0/2)
+        multiinfo_batch[:, 3] = goal_distance / (304.0/2)
+
+        # to visualize the multiinfo tensor
+        # fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+        # axs[0].imshow(multiinfo_batch[0, 0].cpu().numpy(), cmap='gray')
+        # axs[0].set_title('Grayscale')
+        # axs[1].imshow(multiinfo_batch[0, 1].cpu().numpy(), cmap='gray')
+        # axs[1].set_title('Agent Mask')
+        # axs[2].imshow(multiinfo_batch[0, 2].cpu().numpy(), cmap='hot')
+        # axs[2].set_title('Agent Distance')
+        # axs[3].imshow(multiinfo_batch[0, 3].cpu().numpy(), cmap='hot')
+        # axs[3].set_title('Goal Distance')
+        # plt.show()
+        # input()
+
+        return multiinfo_batch
+    
+    def trans_multiinfo_state(self, state_image_batch, state_position_batch):
+        # Returns a tensor of shape (batch_size, 4, height, width)
+        # Channel 0: Grayscale image
+        # Channel 1: Mask of the agent
+        # Channel 2: Distance from the agent to every pixel
+        # Channel 3: Distance from the goal to every pixel
+
+        # Get batch size, height, and width
+        batch_size, _, height, width = state_image_batch.shape
+        
+        # Create a tensor of shape (batch_size, 4, height, width) filled with zeros
+        multiinfo_batch = torch.zeros((batch_size, 4, height, width), device=self.device, dtype=torch.float32)
+        
+        # Extract the rgb array and convert to grayscale
+        image = state_image_batch[:, 0]
+        grayscale = (
+                0.2989 * torch.bitwise_and(torch.bitwise_right_shift(image, 16), 255) +
+                0.5870 * torch.bitwise_and(torch.bitwise_right_shift(image, 8), 255) +
+                0.1140 * torch.bitwise_and(image, 255)
+                ) / 255.0
+        multiinfo_batch[:, 0] = grayscale
+
+        # Generate meshgrid for pixel indices
+        y_indices, x_indices = torch.meshgrid(
+            torch.arange(height, device=self.device, dtype=torch.float32),
+            torch.arange(width, device=self.device, dtype=torch.float32),
+            indexing='ij'
+            )
+        x_indices, y_indices = x_indices.unsqueeze(0), y_indices.unsqueeze(0)
+
+        # Calculate the agent mask
+        agent_pos = state_position_batch / 2
+        agent_x, agent_y = agent_pos[:, 0:1, None, None], agent_pos[:, 1:2, None, None]
+        agent_mask = ((x_indices >= (agent_x - 12)) & (x_indices < (agent_x + 12)) &
+                      (y_indices >= (agent_y - 12)) & (y_indices < (agent_y + 12))).float()
+        multiinfo_batch[:, 1] = agent_mask
+
+        # Calculate the distance from the agent to every pixel
+        agent_distance = torch.sqrt((x_indices - agent_x) ** 2 + (y_indices - agent_y) ** 2)
+        multiinfo_batch[:, 2] = agent_distance / (304.0 / 2)  # Normalized distance
+
+        # Calculate the distance from the goal to every pixel
+        goal_position = torch.tensor(env.goal_position, device=self.device, dtype=torch.float32) / 2
+        goal_x, goal_y = goal_position[0], goal_position[1]
+        goal_distance = torch.sqrt((x_indices - goal_x) ** 2 + (y_indices - goal_y) ** 2)
+        multiinfo_batch[:, 3] = goal_distance / (304.0 / 2)  # Normalized distance
 
         # Fill the multiinfo tensor with the grayscale image, the agent mask, the agent distance, and the goal distance
         multiinfo_batch[:, 0] = grayscale / 255.0
@@ -421,8 +489,8 @@ class Train_DQL():
             self.last_epi_box_in_goal = 0
             done = False
             timeout = False
-            # for frame in tqdm(range(100000)):
-            for frame in count():
+            for frame in tqdm(range(100000)):
+            # for frame in count():
                 if epi > self.last_epi_box_in_goal + self.no_goal_timeout:
                     timeout = True
 
@@ -666,8 +734,8 @@ if __name__ == "__main__":
         '--config_file',
         type=str,
         help='path of the configuration file',
-        # default= 'configurations/config_basic_eval.yml'
-        default= 'configurations/config_basic_test.yml'
+        default= 'configurations/config_basic_eval.yml'
+        # default= 'configurations/config_basic_test.yml'
         # default= 'configurations/config_cmplx_eval.yml'
         # default= 'configurations/config_cmplx_test.yml'
     )
