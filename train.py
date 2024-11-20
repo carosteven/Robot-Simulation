@@ -159,7 +159,7 @@ class Train_DQL():
         epsilon = self.STARTING_EPSILON
         if os.path.exists(self.checkpoint_path) or self.resume_training:
             if self.resume_training:
-                self.resume_training = False # Only true at the start (use current checkpoint path if preemption)
+                self.resume_training = False # Only true at the start (use current checkpoint path if preemption) (Must change if using options)
                 old_checkpoint_path = f'checkpoint/{self.job_id_to_resume}/checkpoint-{self.job_name}.pt'
                 training_state = torch.load(old_checkpoint_path, map_location=self.device)
             else:
@@ -324,6 +324,18 @@ class Train_DQL():
         multiinfo_batch[:, 2] = agent_distance / (304.0/2)
         multiinfo_batch[:, 3] = goal_distance / (304.0/2)
 
+        fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+        axs[0].imshow(multiinfo_batch[0, 0].cpu().numpy(), cmap='gray')
+        axs[0].set_title('Grayscale')
+        axs[1].imshow(multiinfo_batch[0, 1].cpu().numpy(), cmap='gray')
+        axs[1].set_title('Agent Mask')
+        axs[2].imshow(multiinfo_batch[0, 2].cpu().numpy(), cmap='hot')
+        axs[2].set_title('Agent Distance')
+        axs[3].imshow(multiinfo_batch[0, 3].cpu().numpy(), cmap='hot')
+        axs[3].set_title('Goal Distance')
+        plt.show()
+        input()
+
         return multiinfo_batch
     
     def update_networks(self, policy, epi):
@@ -423,9 +435,6 @@ class Train_DQL():
             timeout = False
             # for frame in tqdm(range(100000)):
             for frame in count():
-                if epi > self.last_epi_box_in_goal + self.no_goal_timeout:
-                    timeout = True
-
                 if epi > self.last_epi_box_in_goal + self.no_goal_timeout:
                     timeout = True
 
