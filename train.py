@@ -305,36 +305,24 @@ class Train_DQL():
         goal_x, goal_y = goal_position[0], goal_position[1]
         goal_distance = torch.sqrt((x_indices - goal_x)**2 + (y_indices - goal_y)**2)
 
-        # to visualize the multiinfo tensor
-        # fig, axs = plt.subplots(1, 4, figsize=(20, 5))
-        # axs[0].imshow(grayscale[0].cpu().numpy(), cmap='gray')
-        # axs[0].set_title('Grayscale')
-        # axs[1].imshow(agent_mask[0].cpu().numpy(), cmap='gray')
-        # axs[1].set_title('Agent Mask')
-        # axs[2].imshow(agent_distance[0].cpu().numpy(), cmap='hot')
-        # axs[2].set_title('Agent Distance')
-        # axs[3].imshow(goal_distance[0].cpu().numpy(), cmap='hot')
-        # axs[3].set_title('Goal Distance')
-        # plt.show()
-        # input()
-
         # Fill the multiinfo tensor with the grayscale image, the agent mask, the agent distance, and the goal distance
         multiinfo_batch[:, 0] = grayscale / 255.0
         multiinfo_batch[:, 1] = agent_mask
         multiinfo_batch[:, 2] = agent_distance / (304.0/2)
         multiinfo_batch[:, 3] = goal_distance / (304.0/2)
 
-        fig, axs = plt.subplots(1, 4, figsize=(20, 5))
-        axs[0].imshow(multiinfo_batch[0, 0].cpu().numpy(), cmap='gray')
-        axs[0].set_title('Grayscale')
-        axs[1].imshow(multiinfo_batch[0, 1].cpu().numpy(), cmap='gray')
-        axs[1].set_title('Agent Mask')
-        axs[2].imshow(multiinfo_batch[0, 2].cpu().numpy(), cmap='hot')
-        axs[2].set_title('Agent Distance')
-        axs[3].imshow(multiinfo_batch[0, 3].cpu().numpy(), cmap='hot')
-        axs[3].set_title('Goal Distance')
-        plt.show()
-        input()
+        # to visualize the multiinfo tensor
+        # fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+        # axs[0].imshow(multiinfo_batch[0, 0].cpu().numpy(), cmap='gray')
+        # axs[0].set_title('Grayscale')
+        # axs[1].imshow(multiinfo_batch[0, 1].cpu().numpy(), cmap='gray')
+        # axs[1].set_title('Agent Mask')
+        # axs[2].imshow(multiinfo_batch[0, 2].cpu().numpy(), cmap='hot')
+        # axs[2].set_title('Agent Distance')
+        # axs[3].imshow(multiinfo_batch[0, 3].cpu().numpy(), cmap='hot')
+        # axs[3].set_title('Goal Distance')
+        # plt.show()
+        # input()
 
         return multiinfo_batch
     
