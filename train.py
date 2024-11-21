@@ -375,7 +375,7 @@ class Train_DQL():
     def scheduler(self):
         success_threshold = 0.8  # Define a success threshold
         evaluation_interval = 10  # Define window to evaluate success rate
-        success_count = sum(1 for boxes in self.episodic_stats['boxes_in_goal'][-evaluation_interval:] if boxes == env.training_step+1)
+        success_count = sum(1 for boxes in self.episodic_stats['boxes_in_goal'][-evaluation_interval:] if boxes >= env.training_step+1)
         success_rate = success_count / evaluation_interval
 
         if success_rate >= success_threshold:
@@ -635,6 +635,7 @@ def main(args):
         logging.basicConfig(filename=log_dir,level=logging.DEBUG)
     
     logging.info("starting training script")
+    logging.info(f"Job ID: {job_id}")
 
     env = environments.selector(config)
     env.state_type = config['state_type']
