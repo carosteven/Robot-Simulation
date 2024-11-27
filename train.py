@@ -352,7 +352,7 @@ class Train_DQL():
 
         # Detach y since it is the target. Target values should
         # be kept fixed.
-        loss = torch.nn.SmoothL1Loss()(targets.detach().view_as(qvalues), qvalues)
+        loss = torch.nn.SmoothL1Loss()(targets.detach().view_as(qvalues), qvalues) if not self.test else torch.tensor(0.0, requires_grad=True).to(self.device)
 
         # Backpropagation
         policy['optimizer'].zero_grad()
