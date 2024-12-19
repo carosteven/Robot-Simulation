@@ -54,3 +54,59 @@ class VisionDQN_dense(nn.Module):
 
     def forward(self, x):
         return self.densenet121(x)
+    
+class VisionDQN_Multi_Cam(nn.Module):
+    def __init__(self, n_observations, n_actions):
+        super(VisionDQN_Multi_Cam, self).__init__()
+        # Overhead Camera
+        self.convOC1 = nn.Conv2d(1, 32, kernel_size=8, stride=4)
+        self.convOC2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+        self.convOC3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+        self.maxpoolOC = nn.MaxPool2d(2, 2)
+        self.fcOC1 = nn.Linear(64*17*17, 512)
+
+        # Front Camera
+        self.fcFCr = nn.Linear(3*3, 16)
+        self.fcFCg = nn.Linear(3*3, 16)
+        self.fcFCb = nn.Linear(3*3, 16)
+        self.fcFC = nn.Linear(16*3, 32)
+
+        # Attention
+        self.attention_fc = nn.Linear(512+32, 2)
+        
+        # Combined Layers
+        self.fc1 = nn.Linear(512+32, 256)
+        self.fc2 = nn.Linear(256, n_actions)
+
+        
+
+    def forward(self, OC_FC):
+        OC, FC = OC_FC
+        OC = F.relu(self.convOC1(OC))
+        OC = F.relu(self.convOC2(OC))
+        OC = F.relu(self.convOC3(OC))
+        OC = self.maxpoolOC(OC)
+        OC = torch.flatten(OC, 1)
+        OC = F.relu(self.fcOC1(OC))
+
+        FCr = FC[:, 0].view(FC[:, 0].size(0), -1)
+        FCr = F.relu(self.fcFCr(FCr))
+
+        FCg = FC[:, 1].view(FC[:, 1].size(0), -1)
+        FCg = F.relu(self.fcFCg(FCg))
+        
+        FCb = FC[:, 2].view(FC[:, 2].size(0), -1)
+        FCb = F.relu(self.fcFCb(FCb))
+
+        FC = torch.cat((FCr, FCg, FCb), 1)
+        FC = F.relu(self.fcFC(FC))
+
+        # Attention
+        OC_FC = torch.cat((OC, FC), 1)
+        attention_weights = F.softmax(self.attention_fc(OC_FC), dim=1)
+        OC = OC * attention_weights[:, 0].unsqueeze(1)
+        FC = FC * attention_weights[:, 1].unsqueeze(1)
+
+        x = torch.cat((OC, FC), 1)
+        x = F.relu(self.fc1(x))
+        return self.fc2(x)

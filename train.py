@@ -33,7 +33,7 @@ Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward', 'ministep'))
 
 
-
+# TODO step simulation until still
 class ReplayMemory(object):
     def __init__(self, capacity):
         self.memory = deque([], maxlen=capacity)
@@ -94,6 +94,10 @@ class Train_DQL():
         elif self.state_info == 'multiinfo':
             self.transform_state = self.trans_multiinfo_state
             self.n_observations = 4 # (channels)
+        
+        elif self.state_info == 'multicam':
+            self.transform_state = self.trans_multicam_state
+            self.n_observations = 4 # might not need this
 
         self.state = self.get_state(env.reset())
         self.next_state = None
@@ -124,6 +128,10 @@ class Train_DQL():
             state = []
             state.append(torch.tensor(raw_state[0], dtype=torch.int32, device=self.device).unsqueeze(0))
             state.append(torch.tensor(np.array([raw_state[1].x, raw_state[1].y]), dtype=torch.int32, device=self.device).unsqueeze(0))
+        elif self.state_info == 'multicam':
+            state = []
+            state.append(torch.tensor(raw_state[0], dtype=torch.int32, device=self.device).unsqueeze(0))
+            state.append(torch.tensor(raw_state[1], dtype=torch.int32, device=self.device).unsqueeze(0))
         return state
 
 
@@ -144,6 +152,11 @@ class Train_DQL():
                 elif model == 'densenet':
                     policy_net = models.VisionDQN_dense(self.n_observations, self.n_actions)
                     target_net = models.VisionDQN_dense(self.n_observations, self.n_actions)
+                
+                elif model == 'multicam':
+                    # Don't think I need n_observations
+                    policy_net = models.VisionDQN_Multi_Cam(self.n_observations, self.n_actions)
+                    target_net = models.VisionDQN_Multi_Cam(self.n_observations, self.n_actions)
                 
             else:    
                 policy_net = models.SensorDQN(self.n_observations, self.n_actions)
@@ -257,6 +270,35 @@ class Train_DQL():
         colour_batch = colour_batch / 255.0
         return colour_batch
     
+    def trans_multicam_state(self, state_OC_batch, state_FC_batch):
+        # Overhead Camera, Front Camera
+        # Extract the rgb array and the agent position
+        image = state_OC_batch[:, 0]
+
+        # Get the height and width of the image
+        height, width = image.shape[1], image.shape[2]
+
+        # Create a tensor of shape (batch_size, 4, height, width) filled with zeros
+        OC_batch = torch.zeros((state_OC_batch.shape[0], 1, height, width), device=self.device, dtype=torch.float32)
+
+        # Extract the red, green, and blue channels from the rgb array
+        red = torch.bitwise_and(torch.bitwise_right_shift(image, 16), 255)
+        green = torch.bitwise_and(torch.bitwise_right_shift(image, 8), 255)
+        blue = torch.bitwise_and(image, 255)
+
+        # Calculate the grayscale image
+        grayscale = 0.2989 * red + 0.5870 * green + 0.1140 * blue
+
+        OC_batch[:, 0] = grayscale / 255.0
+
+        FC_batch = torch.zeros((state_FC_batch.shape[0], 3, 3, 3), device=self.device, dtype=torch.float32)
+        FC_batch[:, 0] = state_FC_batch[:, 0] / 255.0
+        FC_batch[:, 1] = state_FC_batch[:, 1] / 255.0
+        FC_batch[:, 2] = state_FC_batch[:, 2] / 255.0
+
+        return OC_batch, FC_batch
+
+    
     def trans_multiinfo_state(self, state_image_batch, state_position_batch):
         # Returns a tensor of shape (batch_size, 4, height, width)
         # Channel 0: Grayscale image
@@ -334,8 +376,8 @@ class Train_DQL():
 
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                                 batch.next_state)), device=self.device, dtype=torch.bool)
-        non_final_next_states = self.transform_state(torch.cat([s[0] for s in batch.next_state if s is not None]), torch.cat([s[1] for s in batch.next_state if s is not None])).to(self.device)
-        state_batch = self.transform_state(torch.cat([s[0] for s in batch.state]), torch.cat([s[1] for s in batch.state])).to(self.device)
+        non_final_next_states = self.transform_state(torch.cat([s[0] for s in batch.next_state if s is not None]), torch.cat([s[1] for s in batch.next_state if s is not None]))#.to(self.device)
+        state_batch = self.transform_state(torch.cat([s[0] for s in batch.state]), torch.cat([s[1] for s in batch.state]))#.to(self.device)
         action_batch = torch.cat(batch.action).to(self.device)
         reward_batch = torch.cat(batch.reward).to(self.device)
         ministep_batch = torch.tensor(batch.ministep, device=self.device, dtype=torch.float)

@@ -536,16 +536,39 @@ class Basic_Env(object):
         Gets integer pixel values from screen
         """
         state = (np.array(self.pxarr).astype(np.float64)/2e32).transpose()
-        state = np.resize(rescale(state, 0.5)*2e32, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
+        state_half = np.resize(rescale(state, 0.5)*2e32, (1,int(self.screen_size[0]/2),int(self.screen_size[1]/2)))
         
         if self.state_info == 'colour':
-            self.state = state
+            self.state = state_half
         
         elif self.state_info == 'multiinfo':
             self.state = []
-            self.state.append(state)
+            self.state.append(state_half)
             # append agent position
             self.state.append(self._agent['robot'].position)
+
+        elif self.state_info == 'multicam':
+            self.state = []
+            self.state.append(np.resize(state, (1, self.screen_size[0], self.screen_size[1])))
+            # append pixels around agent
+            agent_pos = self.env_to_grid(self._agent['robot'].position)
+            pixel_array = np.zeros((3, 3, 3), dtype=int)
+            for i in range(-1, 2):
+                for j in range(-1, 2):
+                    grid_pos = (agent_pos[0] + i, agent_pos[1] + j)
+                    if 0 <= grid_pos[0] < self.grid_size and 0 <= grid_pos[1] < self.grid_size:
+                        cell = self.grid_world[grid_pos]
+                        if 'r' in cell:
+                            pixel_array[i + 1, j + 1] = [0, 0, 255]  # Blue
+                        elif 'b' in cell:
+                            pixel_array[i + 1, j + 1] = [255, 0, 0]  # Red
+                        elif 'w' in cell:
+                            pixel_array[i + 1, j + 1] = [0, 0, 0]  # Black
+                        else:
+                            pixel_array[i + 1, j + 1] = [255, 255, 255]  # White
+                    else:
+                        pixel_array[i + 1, j + 1] = [0, 0, 0]  # Black for out of bounds
+            self.state.append(pixel_array.transpose(2, 0, 1))
 
     def get_reward(self, action_taken: bool):
         """
