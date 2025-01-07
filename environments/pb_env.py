@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pybullet as p
 from scipy.ndimage import rotate as rotate_image
-from scipy.ndimage.morphology import distance_transform_edt
+from scipy.ndimage import distance_transform_edt
 from shapely.geometry import box
 from shapely.ops import unary_union
 from skimage.draw import line
@@ -222,7 +222,7 @@ class Environment:
             (0, -(0.07 + (1.5 - 0.07) / (10 - 0.7) * (self.room_width - 0.7)), 0)
         )
 
-        self.assets_dir = Path(__file__).parent / 'assets'
+        self.assets_dir = Path(__file__).parent.parent / 'assets'
 
         ################################################################################
         # Misc
@@ -1442,7 +1442,7 @@ def get_env_from_cfg(cfg, real_env=False, **kwargs):
         return RealEnvironment(**original_kwargs)
     return Environment(**original_kwargs)
 
-cfg_dir = Path(__file__).parent / 'config'
+cfg_dir = Path(__file__).parent.parent / 'configurations'
 with open(f'{cfg_dir}/small_empty-steering_commands.yml') as file:
     cfg = yaml.load(file, Loader=yaml.FullLoader)
     env = get_env_from_cfg(cfg, use_gui=True)
