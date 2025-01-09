@@ -190,7 +190,7 @@ class Train_DQL():
                 state = self.transform(self.state).to(self.device)
                 qvalues = policy['policy_net'](state)
             action = torch.argmax(qvalues).item()
-        action = torch.tensor(action, device=self.device, dtype=torch.long)
+        # action = torch.tensor(action, device=self.device, dtype=torch.long)
         
         # Epsilon update rule: Keep reducing a small amount over
         # STEPS_MAX number of steps, and at the end, fix to EPSILON_END
@@ -271,13 +271,8 @@ class Train_DQL():
         done = False
         timeout = False
         for timestep in tqdm(range(self.total_timesteps)):
-            # if epi > self.last_epi_box_in_goal + self.no_goal_timeout:
-            #     timeout = True
-
-            # reward, epi, done = self.primitive_action_control(self.policy, timestep, epi, timeout=timeout)
             action = self.get_action(self.policy)
-            next_state, reward, done, info = env.step(action)
-            self.state = next_state
+            next_state, reward, done, timeout, info = env.step(action)
 
             if not self.test:
                 self.policy['memory'].push(self.state, action, next_state, reward, info['ministeps'])
@@ -285,6 +280,8 @@ class Train_DQL():
                 # Train after collecting sufficient experience
                 if timestep > self.learning_starts:
                     self.update_networks(self.policy, epi)
+
+            self.state = next_state # will be overwritten if done (next_state is None)
 
             # Update stats
             self.episodic_stats['cumulative_reward'][-1] += reward.item()
@@ -301,10 +298,10 @@ class Train_DQL():
                     logging.info("Time limit reached. Exiting training...")
                     sys.exit()
             
-            if done or timeout:
+            if done:
                 if timeout:
-                    logging.info(f"Inactivity timeout. {env.config['num_boxes'] - env.boxes_remaining} in goal. Resetting environment...")
-                if done:
+                    logging.info(f"Inactivity timeout. {info['cumulative_cubes']} in goal. Resetting environment...")
+                else:
                     logging.info("All boxes in receptacle. Resetting environment...")
                 self.state = self.get_state(env.reset())
                 # logging.info(f'Epoch {self.epoch}')

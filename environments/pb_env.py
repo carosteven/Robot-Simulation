@@ -627,8 +627,11 @@ class PB_Env:
 
         # Determine whether episode is done
         done = False
+        timeout = False
         if len(self.removed_cube_ids_set) == self.num_cubes or self.inactivity_counter >= self.inactivity_cutoff:
             done = True
+            if self.inactivity_counter >= self.inactivity_cutoff:
+                timeout = True
 
         # Compute reward for the step
         if robot_hit_obstacle:
@@ -650,7 +653,7 @@ class PB_Env:
             'cumulative_reward': self.robot_cumulative_reward,
         }
 
-        return state, reward, done, info
+        return state, reward, done, timeout, info
 
     @staticmethod
     def close():
