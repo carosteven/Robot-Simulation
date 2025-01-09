@@ -64,7 +64,7 @@ LOCAL_MAP_WIDTH = 1  # 1 meter
 LOCAL_MAP_PIXELS_PER_METER = LOCAL_MAP_PIXEL_WIDTH / LOCAL_MAP_WIDTH
 MAP_UPDATE_STEPS = 250
 
-class Environment:
+class PB_Env:
     def __init__(
         # pylint: disable=bad-continuation
         # This comment is here to make code folding work
@@ -77,11 +77,11 @@ class Environment:
             ministep_size=0.25, inactivity_cutoff=100, random_seed=None,
             use_gui=False, show_debug_annotations=False, show_occupancy_map=False,
         ):
-        import matplotlib.pyplot as plt
-        self.plt = plt
-        self.fig, self.axes = self.plt.subplots(1, 4, figsize=(24, 6))
-        self.colorbars = [None, None, None, None]
-        self.plt.ion()  # Turn on interactive mode
+        # import matplotlib.pyplot as plt
+        # self.plt = plt
+        # self.fig, self.axes = self.plt.subplots(1, 4, figsize=(24, 6))
+        # self.colorbars = [None, None, None, None]
+        # self.plt.ion()  # Turn on interactive mode
 
         ################################################################################
         # Store arguments
@@ -364,7 +364,6 @@ class Environment:
     def _step(self, action, dry_run=False, debug=False):
         ################################################################################
         # Setup
-
         if debug:
             robot_action = self.process_events()
             increment = 360 / 4
@@ -1335,7 +1334,7 @@ class Environment:
     def _closest_valid_cspace_indices(self, i, j):
         return self.closest_cspace_indices[:, i, j]
 
-class RealEnvironment(Environment):
+class RealEnvironment(PB_Env):
     CUBE_REMOVAL_THRESHOLD = 2
     REMOVED_BODY_Z = -1000
 
@@ -1440,16 +1439,20 @@ def get_env_from_cfg(cfg, real_env=False, **kwargs):
     original_kwargs.update(kwargs)
     if real_env:
         return RealEnvironment(**original_kwargs)
-    return Environment(**original_kwargs)
+    return PB_Env(**original_kwargs)
 
-cfg_dir = Path(__file__).parent.parent / 'configurations'
-with open(f'{cfg_dir}/small_empty-steering_commands.yml') as file:
-    cfg = yaml.load(file, Loader=yaml.FullLoader)
-    env = get_env_from_cfg(cfg, use_gui=True)
-    # policy = utils.get_policy_from_cfg(cfg, env.get_action_space())
-    state = env.reset()
-    while True:
-        # action, _ = [int(input("Action: ")),None]
-        state, _, done, _ = env.step(None, debug=True)
-        if done:
-            state = env.reset()
+def main():
+    cfg_dir = Path(__file__).parent.parent / 'configurations'
+    with open(f'{cfg_dir}/small_empty-steering_commands.yml') as file:
+        cfg = yaml.load(file, Loader=yaml.FullLoader)
+        env = get_env_from_cfg(cfg, use_gui=True)
+        # policy = utils.get_policy_from_cfg(cfg, env.get_action_space())
+        state = env.reset()
+        while True:
+            # action, _ = [int(input("Action: ")),None]
+            state, _, done, _ = env.step(None, debug=True)
+            if done:
+                state = env.reset()
+
+if __name__ == '__main__':
+    main()
