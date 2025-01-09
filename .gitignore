@@ -1,5 +1,4 @@
 venv/
-venv38/
 *.pckl
 *.pt
 *.out
