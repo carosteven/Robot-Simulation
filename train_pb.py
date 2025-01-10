@@ -152,8 +152,6 @@ class Train_DQL():
         training_state = {}
         training_state['epoch'] = self.epoch
         training_state['stats'] = self.episodic_stats
-        training_state['training_step'] = env.training_step
-        training_state['num_boxes'] = env.config['num_boxes']
         training_state[f'policy_state_dict'] = self.policy['policy_net'].state_dict()
         training_state[f'target_state_dict'] = self.policy['target_net'].state_dict()
         training_state[f'optimizer_state_dict'] = self.policy['optimizer'].state_dict()
