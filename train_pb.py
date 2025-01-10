@@ -105,6 +105,12 @@ class Train_DQL():
                 policy_net = models.VisionDQN(self.num_input_channels, self.action_space)
                 target_net = models.VisionDQN(self.num_input_channels, self.action_space)
         target_net.load_state_dict(policy_net.state_dict())
+        target_net.eval()
+
+        if self.test:
+            policy_net.eval()
+        else:
+            policy_net.train()
 
         # self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.LEARNING_RATE)
         # self.optimizer = optim.SGD(self.policy_net.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0001)
@@ -353,7 +359,7 @@ class Train_DQL():
         ax2.tick_params(axis='y', labelcolor='b')
         ax3.tick_params(axis='y', labelcolor='r')
 
-        ax3.set_ylim(0, 5)  # Set the y-axis limits for boxes in goal
+        ax3.set_ylim(0, 10)  # Set the y-axis limits for boxes in goal
 
         fig.tight_layout()
         fig.legend(loc='upper left', bbox_to_anchor=(0, 1), bbox_transform=ax1.transAxes)
