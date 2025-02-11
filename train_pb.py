@@ -56,9 +56,10 @@ class Train_DQL():
         self.policy_type = config['policy_type']
         self.checkpoint_path = f'checkpoint/{job_id}/checkpoint-{config["job_name"]}.pt' if not test else f'model_weights/model-{config["job_name"]}.pt'
         self.checkpoint_freq = config['checkpoint_freq']
-        self.no_goal_timeout = config['no_goal_timeout']
         self.total_timesteps = config['total_timesteps']
         self.learning_starts = config['learning_starts']
+        self.grad_norm_clipping = config['grad_norm_clipping']
+        self.optimizer_type = config['optimizer_type']
         self.test = test
         self.resume_training = config['resume_training']
         self.job_id_to_resume = config['job_id_to_resume']
@@ -73,7 +74,8 @@ class Train_DQL():
         # Global variables
         self.BATCH_SIZE = config['batch_size']                  # How many examples to sample per train step
         self.GAMMA = config['discount_factor']                  # Discount factor in episodic reward objective
-        self.LEARNING_RATE = config['learning_rate']            # Learning rate for Adam optimizer
+        self.LEARNING_RATE = config['learning_rate']            # Learning rate for optimizer
+        self.WEIGHT_DECAY = config['weight_decay']              # Weight decay for optimizer
         self.TARGET_UPDATE_FREQ = config['target_update_freq']  # Target network update frequency
         self.STARTING_EPSILON = config['starting_exploration']  # Starting epsilon
         self.STEPS_MAX = config['exploration_timesteps']        # Gradually reduce epsilon over these many steps
@@ -113,8 +115,10 @@ class Train_DQL():
             policy_net.train()
 
         # self.optimizer = optim.Adam(self.policy_net.parameters(), lr=self.LEARNING_RATE)
-        # self.optimizer = optim.SGD(self.policy_net.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0001)
-        optimizer = optim.AdamW(policy_net.parameters(), lr=self.LEARNING_RATE, weight_decay=0.01)
+        if self.optimizer_type == 'sgd':
+            optimizer = optim.SGD(policy_net.parameters(), lr=self.LEARNING_RATE, momentum=0.9, weight_decay=self.WEIGHT_DECAY)
+        elif self.optimizer_type == 'adamw':
+            optimizer = optim.AdamW(policy_net.parameters(), lr=self.LEARNING_RATE, weight_decay=0.01)
         memory = ReplayMemory(buffer_size)
         self.epoch = 0
         loss = 0
@@ -135,6 +139,7 @@ class Train_DQL():
 
             if self.test:
                 policy_net.load_state_dict(training_state[f'policy_state_dict'])
+                policy_net.eval()
                 self.show_stats(self.episodic_stats)
                 epsilon = self.EPSILON_END
 
@@ -220,22 +225,27 @@ class Train_DQL():
         ministep_batch = torch.tensor(batch.ministep, device=self.device, dtype=torch.float)
 
         # Get Q(s, a) for every (s, a) in the minibatch
-        qvalues = policy['policy_net'](state_batch).gather(1, action_batch.view(-1, 1)).squeeze()
+        output = policy['policy_net'](state_batch)
+        qvalues = output.view(self.BATCH_SIZE, -1).gather(1, action_batch.unsqueeze(1)).squeeze(1)
         
         # Double DQN Formula: r + gamma*TARGET(s_t+1, argmax_a POLICY (s_t+1, a))
-        q_target_values = torch.zeros(self.BATCH_SIZE, device=self.device)
+        q_target_values = torch.zeros(self.BATCH_SIZE, dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            actions = torch.argmax(policy['policy_net'](non_final_next_states), dim=1)
-            q_target_values[non_final_mask] = policy['target_net'](non_final_next_states).gather(1, actions.unsqueeze(1)).squeeze()
+            # best_actions = torch.argmax(policy['policy_net'](non_final_next_states), dim=1)
+            # q_target_values[non_final_mask] = policy['target_net'](non_final_next_states).gather(1, best_actions.unsqueeze(1)).squeeze()
+            best_actions = policy['policy_net'](non_final_next_states).view(non_final_next_states.size(0), -1).max(1)[1].view(non_final_next_states.size(0), 1)
+            q_target_values[non_final_mask] = policy['target_net'](non_final_next_states).view(non_final_next_states.size(0), -1).gather(1, best_actions).view(-1)
         targets = reward_batch + torch.pow(self.GAMMA, ministep_batch) * q_target_values
 
         # Detach y since it is the target. Target values should
         # be kept fixed.
-        loss = torch.nn.SmoothL1Loss()(targets.detach().view_as(qvalues), qvalues)
+        loss = F.smooth_l1_loss(targets.detach().view_as(qvalues), qvalues)
 
         # Backpropagation
         policy['optimizer'].zero_grad()
         loss.backward()
+        if self.grad_norm_clipping is not None:
+            torch.nn.utils.clip_grad_norm_(policy['policy_net'].parameters(), self.grad_norm_clipping)
         policy['optimizer'].step()
 
         # Update target network every few steps
@@ -274,7 +284,8 @@ class Train_DQL():
         self.last_epi_box_in_goal = 0
         done = False
         timeout = False
-        for timestep in tqdm(range(self.total_timesteps)):
+        total_timesteps_with_warmup = self.total_timesteps + self.learning_starts
+        for timestep in tqdm(range(total_timesteps_with_warmup)):
             action = self.get_action(self.policy)
             next_state, reward, done, timeout, info = env.step(action)
 
